@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<base target="_top">
+<title>停止記録</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --border: #e3e6eb;
+    --text: #1f2328;
+    --muted: #6e7681;
+    --accent: #2563eb;
+    --accent-dark: #1d4ed8;
+    --warn: #d97706;
+    --error: #dc2626;
+    --success: #059669;
+    --col-2l: #2563eb;
+    --col-500: #0d9488;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+  }
+  body { min-height: 100vh; padding-bottom: 60px; }
+
+  /* ── トップバー ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .top-row {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .back-btn {
+    background: transparent; border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 14px; min-height: 40px;
+    cursor: pointer; font: inherit; color: var(--text);
+  }
+  .back-btn:hover { background: #f1f3f4; }
+  .cycle-title {
+    flex: 1; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  }
+  .cycle-title .line-badge {
+    font-size: 16px; font-weight: 700;
+    padding: 3px 12px; border-radius: 6px;
+  }
+  .cycle-title.line-2L .line-badge { background: #dbeafe; color: var(--col-2l); }
+  .cycle-title.line-500ml .line-badge { background: #ccfbf1; color: var(--col-500); }
+  .cycle-title .date { font-size: 18px; font-weight: 600; }
+  .cycle-title .id  {
+    font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace;
+  }
+
+  /* ── セクション ── */
+  main {
+    max-width: 920px; margin: 0 auto; padding: 16px;
+  }
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  .section-title {
+    font-size: 14px; font-weight: 700; color: var(--text);
+    margin: 0 0 12px;
+  }
+
+  /* ── フォーム共通 ── */
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+
+  /* 追加フォーム: 停止日 + ストップ時刻 (横並び、Safari overflow対策) */
+  .add-time-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    align-items: end;
+    margin-bottom: 16px;
+  }
+  .date-inline { display: flex; gap: 6px; align-items: center; }
+  .add-time-row select,
+  .add-time-row input[type="time"] { width: auto; }
+  .add-time-row select { min-width: 75px; padding: 10px 8px; }
+  .add-time-row input[type="time"] { width: 140px; min-width: 0; }
+
+  input[type="text"], input[type="number"], input[type="time"],
+  select, textarea {
+    font: inherit; width: 100%;
+    padding: 10px 12px; min-height: 44px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface);
+  }
+  input:focus, select:focus, textarea:focus, input[type="time"]:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  }
+  .field-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .info-note { font-size: 12px; color: var(--muted); }
+
+  /* 製造時間セクション: 1行レイアウト */
+  .prod-time-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 16px;
+  }
+  .prod-label { font-weight: 700; font-size: 15px; }
+  .prod-date-display {
+    font-size: 16px; font-weight: 700;
+    padding: 8px 12px;
+    background: #f1f5f9; border-radius: 6px; color: var(--text);
+  }
+  .prod-separator { margin: 0 6px; color: var(--muted); font-size: 18px; }
+  .prod-time-line select,
+  .prod-time-line input[type="time"] {
+    width: auto;
+    min-height: 40px; padding: 6px 10px;
+    font-size: 16px; font-weight: 600;
+  }
+  .prod-time-line select { min-width: 65px; }
+  .prod-time-line input[type="time"] { min-width: 110px; }
+
+  .save-indicator { font-size: 11px; color: var(--muted); margin-left: 4px; }
+  .save-indicator.saving { color: var(--warn); }
+  .save-indicator.saved { color: var(--success); }
+  .save-indicator.error { color: var(--error); }
+
+  /* 停止記録 追加フォーム */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .minutes-display {
+    font-size: 16px; font-weight: 700; color: var(--text);
+    background: #f1f5f9; border-radius: 6px; padding: 8px 12px;
+    display: inline-block; min-width: 80px; text-align: center;
+  }
+  .radio-group {
+    display: flex; gap: 6px;
+  }
+  .radio-option {
+    flex: 1; text-align: center; padding: 10px;
+    border: 2px solid var(--border); border-radius: 8px;
+    cursor: pointer; font-weight: 500; font-size: 14px;
+    min-height: 44px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .radio-option.selected {
+    border-color: var(--accent); background: #eff6ff; color: var(--accent);
+    font-weight: 700;
+  }
+
+  .btn-primary {
+    background: var(--accent); color: #fff; border: 1px solid var(--accent);
+    padding: 12px 22px; min-height: 48px;
+    border-radius: 8px; font-weight: 700; font-size: 15px;
+    cursor: pointer;
+  }
+  .btn-primary:hover { background: var(--accent-dark); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary {
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    padding: 10px 16px; border-radius: 8px; cursor: pointer;
+  }
+
+  .error-text { color: var(--error); font-size: 13px; margin-top: 8px; }
+
+  /* 停止記録一覧 */
+  .record-list { display: flex; flex-direction: column; gap: 6px; }
+  .record-item {
+    background: #fafbfc;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px;
+    display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center;
+  }
+  .record-item.unfinished { background: #fffbeb; border-color: #fde68a; }
+  .record-seq {
+    font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace;
+    min-width: 30px;
+  }
+  .record-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .record-time-row {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 15px; font-weight: 600;
+  }
+  .record-time-row .end-input {
+    width: 110px; min-height: 36px; padding: 4px 8px;
+    font-size: 14px; font-weight: 600; text-align: center;
+  }
+  .record-time-row .arrow { color: var(--muted); }
+  .record-detail {
+    font-size: 13px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .record-minutes {
+    font-size: 14px; font-weight: 700; color: var(--accent);
+    background: #eff6ff; padding: 4px 10px; border-radius: 6px;
+    min-width: 60px; text-align: center;
+  }
+  .record-minutes.pending { color: var(--muted); background: #f3f4f6; }
+  .end-save-indicator {
+    font-size: 10px; color: var(--muted);
+  }
+  .end-save-indicator.saving { color: var(--warn); }
+  .end-save-indicator.saved { color: var(--success); }
+  .end-save-indicator.error { color: var(--error); }
+  .empty-records {
+    text-align: center; padding: 24px; color: var(--muted); font-size: 13px;
+  }
+
+  /* 同期インジケータ */
+  #sync-indicator {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--surface); border-top: 1px solid var(--border);
+    padding: 8px 16px; font-size: 13px; color: var(--muted);
+    display: flex; justify-content: space-between; align-items: center;
+    z-index: 20;
+  }
+
+  /* ローディング */
+  .skeleton {
+    height: 18px; background: linear-gradient(90deg, #eef0f3 0%, #f7f8fa 50%, #eef0f3 100%);
+    background-size: 200% 100%; animation: shimmer 1.4s ease-in-out infinite;
+    border-radius: 4px;
+  }
+  @keyframes shimmer {
+    0% { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+  }
+
+  /* 狭幅 */
+  @media (max-width: 700px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .add-time-row { flex-direction: column; align-items: stretch; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="top-row">
+    <button class="back-btn" onclick="goBack()">← 戻る</button>
+    <div class="cycle-title" id="cycle-title">
+      <span class="skeleton" style="width: 60px;"></span>
+      <span class="skeleton" style="width: 120px;"></span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- 製造時間 -->
+  <section class="section">
+    <h2 class="section-title">製造時間</h2>
+    <div class="prod-time-line">
+      <span class="prod-label">開始</span>
+      <span class="prod-date-display" id="prod-start-date-display">—</span>
+      <input type="time" id="prod-start-time" onchange="onProdStartChange()">
+      <span class="save-indicator" id="start-save"></span>
+
+      <span class="prod-separator">〜</span>
+
+      <span class="prod-label">終了</span>
+      <select id="prod-end-month" onchange="onProdEndChange()"></select>
+      <span>/</span>
+      <select id="prod-end-day" onchange="onProdEndChange()"></select>
+      <input type="time" id="prod-end-time" onchange="onProdEndChange()">
+      <span class="save-indicator" id="end-save"></span>
+    </div>
+  </section>
+
+  <!-- 停止記録の追加 -->
+  <section class="section">
+    <h2 class="section-title">＋ 停止記録の追加</h2>
+    <div class="add-time-row">
+      <div>
+        <div class="field-label">停止日</div>
+        <div class="date-inline">
+          <select id="stop-day-month"></select>
+          <span>/</span>
+          <select id="stop-day-day"></select>
+        </div>
+      </div>
+      <div>
+        <div class="field-label">ストップ時刻</div>
+        <input type="time" id="stop-stop-time">
+      </div>
+    </div>
+
+    <div class="grid-3">
+      <div>
+        <div class="field-label">停止設備</div>
+        <input type="text" id="stop-equipment" list="equipment-list" placeholder="選択or入力">
+        <datalist id="equipment-list"></datalist>
+      </div>
+      <div>
+        <div class="field-label">停止理由</div>
+        <input type="text" id="stop-reason" list="reason-list" placeholder="選択or入力">
+        <datalist id="reason-list"></datalist>
+      </div>
+      <div>
+        <div class="field-label">対応内容</div>
+        <input type="text" id="stop-action" list="action-list" placeholder="選択or入力">
+        <datalist id="action-list"></datalist>
+      </div>
+    </div>
+
+    <div class="grid-3" style="margin-top: 12px;">
+      <div>
+        <div class="field-label">担当</div>
+        <input type="text" id="stop-charge">
+      </div>
+      <div>
+        <div class="field-label">CR入室</div>
+        <div class="radio-group" id="cr-entry-group">
+          <div class="radio-option" data-value="有" onclick="selectRadio(this)">有</div>
+          <div class="radio-option" data-value="無" onclick="selectRadio(this)">無</div>
+          <div class="radio-option" data-value="" onclick="selectRadio(this)">—</div>
+        </div>
+      </div>
+      <div>
+        <div class="field-label">廃棄本数</div>
+        <input type="number" id="stop-wastage" min="0" placeholder="0">
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top: 12px;">
+      <div>
+        <div class="field-label">UF温度</div>
+        <input type="number" id="stop-uf-temp" step="0.1">
+      </div>
+      <div>
+        <div class="field-label">TEA温度</div>
+        <input type="number" id="stop-tea-temp" step="0.1">
+      </div>
+    </div>
+
+    <div class="error-text" id="stop-error" style="display: none;"></div>
+    <div style="margin-top: 14px; display: flex; gap: 8px; align-items: center;">
+      <button class="btn-primary" id="stop-add-btn" onclick="addStopRecord()">この内容で追加</button>
+      <span class="save-indicator" id="stop-save"></span>
+      <span class="info-note">※ スタート時刻は一覧から後で入力できます</span>
+    </div>
+  </section>
+
+  <!-- 停止記録一覧 -->
+  <section class="section">
+    <h2 class="section-title">停止記録（ストップ時刻順）</h2>
+    <div class="record-list" id="record-list">
+      <div class="empty-records">読み込み中…</div>
+    </div>
+  </section>
+</main>
+
+<div id="sync-indicator">
+  <span id="sync-text">未送信: 0件</span>
+  <span id="sync-time" style="font-size: 11px;"></span>
+</div>
+
+<script>
+const APP_URL = '<?= appUrl ?>';
+const CYCLE_ID = '<?= cycleID ?>';
+
+const STATE = {
+  cycle: null,
+  stopRecords: [],
+  masters: null
+};
+
+function gas(method, ...args) {
+  return new Promise((resolve, reject) => {
+    google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[method](...args);
+  });
+}
+
+// =====================================================
+//  初期化
+// =====================================================
+window.addEventListener('DOMContentLoaded', () => {
+  if (!CYCLE_ID) { goBack(); return; }
+  gas('api_getCycleDetail', CYCLE_ID).then(res => {
+    if (!res.success) {
+      document.body.innerHTML = `<div style="padding: 40px; text-align: center;">⚠ ${res.error}</div>`;
+      return;
+    }
+    STATE.cycle = res.cycle;
+    STATE.stopRecords = res.stopRecords || [];
+    STATE.masters = res.masters || { equipment: [], reason: [], action: [] };
+    renderAll();
+  }).catch(err => {
+    document.body.innerHTML = `<div style="padding: 40px;">⚠ 取得失敗: ${err.message}</div>`;
+  });
+});
+
+// =====================================================
+//  描画
+// =====================================================
+function renderAll() {
+  const c = STATE.cycle;
+  // タイトルバー
+  const titleEl = document.getElementById('cycle-title');
+  titleEl.className = 'cycle-title line-' + c.line;
+  const md = c.productionDate.split('-');
+  titleEl.innerHTML = `
+    <span class="line-badge">${c.line}</span>
+    <span class="date">${parseInt(md[1],10)}/${parseInt(md[2],10)}</span>
+    <span class="id">${c.cycleID}</span>`;
+
+  // 製造開始/終了の初期化
+  initProdTimes();
+
+  // 停止記録 追加フォームの初期化
+  initStopForm();
+
+  // 一覧描画
+  renderRecordList();
+
+  // datalist
+  fillDatalist('equipment-list', STATE.masters.equipment);
+  fillDatalist('reason-list', STATE.masters.reason);
+  fillDatalist('action-list', STATE.masters.action);
+}
+
+function fillDatalist(id, items) {
+  document.getElementById(id).innerHTML = (items || []).map(v => `<option value="${escapeHtml(v)}">`).join('');
+}
+
+// =====================================================
+//  製造時間（開始/終了）
+// =====================================================
+function initProdTimes() {
+  const c = STATE.cycle;
+  const md = c.productionDate.split('-');
+
+  // 開始日の表示（製造日）
+  document.getElementById('prod-start-date-display').textContent =
+    parseInt(md[1], 10) + '/' + parseInt(md[2], 10);
+
+  // 開始: 時刻のみ
+  if (c.productionStartAt) {
+    document.getElementById('prod-start-time').value = hhmm(c.productionStartAt);
+  }
+  // 終了: 月/日/時刻
+  buildSelect('prod-end-month', range(1, 12), null);
+  buildSelect('prod-end-day',   range(1, 31), null);
+  if (c.productionEndAt) {
+    const d = new Date(c.productionEndAt);
+    document.getElementById('prod-end-month').value = d.getMonth() + 1;
+    document.getElementById('prod-end-day').value = d.getDate();
+    document.getElementById('prod-end-time').value = hhmm(c.productionEndAt);
+  } else {
+    // デフォルト: 製造日
+    document.getElementById('prod-end-month').value = parseInt(md[1], 10);
+    document.getElementById('prod-end-day').value = parseInt(md[2], 10);
+  }
+}
+
+function onProdStartChange() {
+  const t = document.getElementById('prod-start-time').value;
+  if (!t) return;
+  // 製造日 + 時刻
+  const iso = STATE.cycle.productionDate + 'T' + t + ':00';
+  setSaveIndicator('start-save', 'saving', '保存中…');
+  gas('api_updateCycleField', {
+    cycleID: STATE.cycle.cycleID, field: 'productionStartAt', value: iso
+  }).then(res => {
+    if (res.success) {
+      STATE.cycle.productionStartAt = iso;
+      setSaveIndicator('start-save', 'saved', '保存しました');
+    } else {
+      setSaveIndicator('start-save', 'error', res.error || 'エラー');
+    }
+  }).catch(err => setSaveIndicator('start-save', 'error', err.message));
+}
+
+function onProdEndChange() {
+  const y = STATE.cycle.productionDate.slice(0, 4);
+  const m = parseInt(document.getElementById('prod-end-month').value, 10);
+  const d = parseInt(document.getElementById('prod-end-day').value, 10);
+  const t = document.getElementById('prod-end-time').value;
+
+  // 時刻が空 → 終了を解除
+  if (!t) {
+    setSaveIndicator('end-save', 'saving', '保存中…');
+    gas('api_updateCycleField', {
+      cycleID: STATE.cycle.cycleID, field: 'productionEndAt', value: ''
+    }).then(res => {
+      if (res.success) {
+        STATE.cycle.productionEndAt = '';
+        setSaveIndicator('end-save', 'saved', '保存');
+      } else {
+        setSaveIndicator('end-save', 'error', res.error || 'エラー');
+      }
+    }).catch(err => setSaveIndicator('end-save', 'error', err.message));
+    return;
+  }
+
+  // 存在しない日付チェック
+  const test = new Date(parseInt(y, 10), m - 1, d);
+  if (test.getMonth() !== m - 1) {
+    setSaveIndicator('end-save', 'error', `${m}/${d}は存在しません`);
+    return;
+  }
+  const iso = y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0') + 'T' + t + ':00';
+  setSaveIndicator('end-save', 'saving', '保存中…');
+  gas('api_updateCycleField', {
+    cycleID: STATE.cycle.cycleID, field: 'productionEndAt', value: iso
+  }).then(res => {
+    if (res.success) {
+      STATE.cycle.productionEndAt = iso;
+      setSaveIndicator('end-save', 'saved', '保存');
+    } else {
+      setSaveIndicator('end-save', 'error', res.error || 'エラー');
+    }
+  }).catch(err => setSaveIndicator('end-save', 'error', err.message));
+}
+
+function setSaveIndicator(id, state, text) {
+  const el = document.getElementById(id);
+  el.className = 'save-indicator ' + state;
+  el.textContent = text;
+  if (state === 'saved') {
+    setTimeout(() => { el.textContent = ''; el.className = 'save-indicator'; }, 1800);
+  }
+}
+
+// =====================================================
+//  停止記録 追加フォーム
+// =====================================================
+function initStopForm() {
+  const p = STATE.cycle.productionDate.split('-');
+  buildSelect('stop-day-month', range(1, 12), parseInt(p[1], 10));
+  buildSelect('stop-day-day',   range(1, 31), parseInt(p[2], 10));
+  document.querySelectorAll('#cr-entry-group .radio-option').forEach(r => r.classList.remove('selected'));
+}
+
+function selectRadio(el) {
+  const group = el.parentElement;
+  group.querySelectorAll('.radio-option').forEach(d => d.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function addStopRecord() {
+  const errEl = document.getElementById('stop-error');
+  errEl.style.display = 'none';
+
+  const m = parseInt(document.getElementById('stop-day-month').value, 10);
+  const d = parseInt(document.getElementById('stop-day-day').value, 10);
+  const stopTime = document.getElementById('stop-stop-time').value;
+  const equipment = document.getElementById('stop-equipment').value.trim();
+  const reason = document.getElementById('stop-reason').value.trim();
+  const action = document.getElementById('stop-action').value.trim();
+  const charge = document.getElementById('stop-charge').value.trim();
+  const crEntry = (document.querySelector('#cr-entry-group .radio-option.selected') || {}).dataset?.value || '';
+  const wastage = document.getElementById('stop-wastage').value;
+  const ufTemp = document.getElementById('stop-uf-temp').value;
+  const teaTemp = document.getElementById('stop-tea-temp').value;
+
+  if (!stopTime) return showStopError('ストップ時刻を入力してください');
+
+  // 停止日 妥当性
+  const yearStr = STATE.cycle.productionDate.slice(0, 4);
+  const test = new Date(parseInt(yearStr, 10), m - 1, d);
+  if (test.getMonth() !== m - 1) return showStopError(`${m}/${d}は存在しない日付です`);
+  const stopDateStr = yearStr + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  const stopIso = stopDateStr + 'T' + stopTime + ':00';
+
+  setSaveIndicator('stop-save', 'saving', '送信中…');
+  document.getElementById('stop-add-btn').disabled = true;
+
+  gas('api_addStopRecord', {
+    cycleID: STATE.cycle.cycleID,
+    stopAt: stopIso,
+    startAt: '',  // 後から入力する運用
+    equipment, reason, action, charge, crEntry,
+    wastage: wastage ? parseInt(wastage, 10) : 0,
+    ufTemp, teaTemp,
+    recordDept: localStorage.getItem('user_department') || ''
+  }).then(res => {
+    document.getElementById('stop-add-btn').disabled = false;
+    if (!res.success) { return showStopError(res.error || '追加失敗'); }
+    setSaveIndicator('stop-save', 'saved', '追加しました');
+    // 一覧再取得 + フォームクリア
+    return gas('api_getCycleDetail', STATE.cycle.cycleID).then(detail => {
+      if (detail.success) {
+        STATE.cycle = detail.cycle;
+        STATE.stopRecords = detail.stopRecords;
+        STATE.masters = detail.masters;
+        renderRecordList();
+        fillDatalist('equipment-list', STATE.masters.equipment);
+        fillDatalist('reason-list', STATE.masters.reason);
+        fillDatalist('action-list', STATE.masters.action);
+      }
+      clearStopForm();
+    });
+  }).catch(err => {
+    document.getElementById('stop-add-btn').disabled = false;
+    showStopError('通信エラー: ' + err.message);
+  });
+
+  function showStopError(msg) {
+    errEl.textContent = msg; errEl.style.display = 'block';
+    setSaveIndicator('stop-save', 'error', '');
+  }
+}
+
+function clearStopForm() {
+  document.getElementById('stop-stop-time').value = '';
+  document.getElementById('stop-equipment').value = '';
+  document.getElementById('stop-reason').value = '';
+  document.getElementById('stop-action').value = '';
+  document.getElementById('stop-charge').value = '';
+  document.getElementById('stop-wastage').value = '';
+  document.getElementById('stop-uf-temp').value = '';
+  document.getElementById('stop-tea-temp').value = '';
+  document.querySelectorAll('#cr-entry-group .radio-option').forEach(r => r.classList.remove('selected'));
+}
+
+// =====================================================
+//  停止記録一覧
+// =====================================================
+function renderRecordList() {
+  const list = document.getElementById('record-list');
+  if (!STATE.stopRecords.length) {
+    list.innerHTML = '<div class="empty-records">まだ停止記録はありません</div>';
+    return;
+  }
+  list.innerHTML = STATE.stopRecords.map((r, i) => {
+    const seq = i + 1;
+    const stop = new Date(r.stopAt);
+    const stopStr = hhmmFromDate(stop);
+    const hasStart = !!r.startAt;
+    const start = hasStart ? new Date(r.startAt) : null;
+    const startVal = hasStart ? hhmmFromDate(start) : '';
+    const minutesStr = hasStart ? (r.minutes || 0) + '分' : '—';
+    const detail = [r.equipment, r.reason, r.action].filter(Boolean).join(' / ');
+    const escapedLogID = escapeAttr(r.logID);
+    return `
+      <div class="record-item ${hasStart ? '' : 'unfinished'}">
+        <div class="record-seq">#${seq}</div>
+        <div class="record-main">
+          <div class="record-time-row">
+            <span>${stopStr}</span>
+            <span class="arrow">→</span>
+            <input type="time" class="end-input" data-log-id="${escapedLogID}"
+              value="${startVal}"
+              onchange="updateEndTime('${escapedLogID}', this.value)">
+            <span class="end-save-indicator" id="end-ind-${escapedLogID}"></span>
+          </div>
+          <div class="record-detail">${escapeHtml(detail || '—')}</div>
+        </div>
+        <div class="record-minutes ${hasStart ? '' : 'pending'}" id="min-${escapedLogID}">${minutesStr}</div>
+      </div>`;
+  }).join('');
+}
+
+function updateEndTime(logID, timeValue) {
+  const indId = 'end-ind-' + logID;
+  const minId = 'min-' + logID;
+  setEndIndicator(indId, 'saving', '保存中…');
+
+  gas('api_updateStopRecordEnd', { logID: logID, startTime: timeValue }).then(res => {
+    if (!res.success) {
+      setEndIndicator(indId, 'error', res.error || 'エラー');
+      return;
+    }
+    setEndIndicator(indId, 'saved', '保存');
+    // 該当行の数値を更新
+    const minEl = document.getElementById(minId);
+    if (minEl) {
+      if (timeValue) {
+        minEl.textContent = (res.minutes || 0) + '分';
+        minEl.classList.remove('pending');
+      } else {
+        minEl.textContent = '—';
+        minEl.classList.add('pending');
+      }
+    }
+    // 行の unfinished クラス切替
+    const item = document.querySelector(`[data-log-id="${logID}"]`)?.closest('.record-item');
+    if (item) item.classList.toggle('unfinished', !timeValue);
+
+    // STATEも更新
+    const rec = STATE.stopRecords.find(r => r.logID === logID);
+    if (rec) {
+      rec.startAt = res.startAt;
+      rec.minutes = res.minutes;
+    }
+  }).catch(err => setEndIndicator(indId, 'error', err.message));
+}
+
+function setEndIndicator(id, state, text) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'end-save-indicator ' + state;
+  el.textContent = text;
+  if (state === 'saved') {
+    setTimeout(() => { el.textContent = ''; el.className = 'end-save-indicator'; }, 1500);
+  }
+}
+
+function escapeAttr(s) {
+  return String(s || '').replace(/"/g, '&quot;');
+}
+
+// =====================================================
+//  ユーティリティ
+// =====================================================
+function goBack() { window.top.location.href = APP_URL; }
+
+function buildSelect(id, values, selected) {
+  const el = document.getElementById(id);
+  el.innerHTML = values.map(v =>
+    `<option value="${v}"${v === selected ? ' selected' : ''}>${v}</option>`
+  ).join('');
+}
+function range(from, to) {
+  const arr = [];
+  for (let i = from; i <= to; i++) arr.push(i);
+  return arr;
+}
+function hhmm(iso) {
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+function hhmmFromDate(d) {
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+function mdFromDate(d) {
+  return (d.getMonth() + 1) + '/' + d.getDate();
+}
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[ch]));
+}
+</script>
+</body>
+</html>
