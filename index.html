@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<base target="_top">
+<title>充填停止記録</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --border: #e3e6eb;
+    --text: #1f2328;
+    --muted: #6e7681;
+    --accent: #2563eb;
+    --accent-dark: #1d4ed8;
+    --warn: #d97706;
+    --error: #dc2626;
+    --success: #059669;
+    --skeleton: #eef0f3;
+    --skeleton-shine: #f7f8fa;
+    --col-2l: #2563eb;
+    --col-500: #0d9488;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    height: 100%;
+    overflow: hidden;  /* ボディスクロール禁止、列ごとにスクロール */
+  }
+  body { display: flex; flex-direction: column; }
+
+  /* ── ヘッダー ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    flex: 0 0 auto;
+  }
+  .header-bar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+  }
+  h1 {
+    font-size: 18px; margin: 0; font-weight: 700;
+    justify-self: start;
+  }
+  .new-cycle-btn {
+    justify-self: center;
+    background: var(--accent); color: #fff; border: 1px solid var(--accent);
+    padding: 10px 22px; min-height: 44px;
+    border-radius: 8px; font-weight: 600; font-size: 15px;
+    cursor: pointer;
+  }
+  .new-cycle-btn:hover { background: var(--accent-dark); }
+  .new-cycle-btn:active { transform: translateY(1px); }
+
+  /* 部署ピル: 大きめ＆過度に角丸 */
+  .header-right {
+    justify-self: end;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .dept-pill {
+    font-size: 15px; font-weight: 600;
+    padding: 10px 22px;
+    border-radius: 999px;
+    background: #eef2ff; border: 2px solid #c7d2fe; color: #3730a3;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+  }
+  .dept-pill:hover { background: #e0e7ff; }
+  .dept-pill:active { transform: translateY(1px); }
+  .dept-pill.empty {
+    background: #fef3c7; border-color: #fcd34d; color: #92400e;
+  }
+
+  .reload-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 44px; height: 44px; min-height: 44px;
+    padding: 0; font-size: 22px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text);
+  }
+  .reload-btn:hover { background: #f1f3f4; }
+  .reload-btn:active { transform: translateY(1px); }
+  .reload-icon { display: inline-block; line-height: 1; }
+  .reload-btn.loading { pointer-events: none; opacity: 0.6; }
+  .reload-btn.loading .reload-icon {
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ── ボタン共通 ── */
+  button {
+    font: inherit; cursor: pointer;
+    border-radius: 8px; border: 1px solid transparent;
+    padding: 10px 14px; min-height: 44px;
+  }
+  .btn-primary {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: var(--accent-dark); }
+  .btn-secondary {
+    background: var(--surface); color: var(--text); border-color: var(--border);
+  }
+  .btn-secondary:hover { background: #f1f3f4; }
+  .btn-ghost {
+    background: transparent; color: var(--muted); border-color: transparent;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── 50/50 並列レイアウト ── */
+  .split-view {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 0;  /* 子要素のoverflowを効かせる */
+  }
+  .line-column {
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+    padding: 8px 12px 80px;  /* 下部はsync-indicator分の余白 */
+    min-height: 0;
+  }
+  .line-column:last-child { border-right: none; }
+
+  .line-header {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--bg);
+    padding: 8px 4px 10px;
+    display: flex; align-items: baseline; justify-content: center; gap: 10px;
+    border-bottom: 1px solid var(--border);
+    margin: 0 -12px 10px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .line-header .line-label {
+    font-size: 18px; font-weight: 700;
+    padding: 3px 12px; border-radius: 6px;
+  }
+  .line-column[data-line="2L"] .line-label { background: #dbeafe; color: var(--col-2l); }
+  .line-column[data-line="500ml"] .line-label { background: #ccfbf1; color: var(--col-500); }
+  .line-header .year-label {
+    font-size: 13px; color: var(--muted);
+  }
+
+  /* ── サイクル一覧 ── */
+  .month-group { margin-bottom: 20px; }
+  .month-label {
+    font-size: 12px; color: var(--muted); font-weight: 600;
+    margin: 10px 2px 6px;
+  }
+  .cycle-card {
+    background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 12px;
+    cursor: pointer; min-height: 60px;
+  }
+  .cycle-card:active { background: #f1f3f4; }
+  .cycle-date {
+    font-size: 22px; font-weight: 700; min-width: 60px; text-align: center;
+    color: var(--text);
+  }
+  .cycle-info { flex: 1; min-width: 0; }
+  .cycle-id {
+    font-size: 11px; color: var(--muted); font-family: ui-monospace, monospace;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cycle-meta {
+    display: flex; align-items: center; gap: 14px;
+    margin-top: 4px; font-size: 13px; flex-wrap: wrap;
+  }
+  .cycle-times { color: var(--text); font-weight: 500; }
+  .cycle-times-muted { color: var(--muted); font-weight: 400; }
+  .cycle-stats { font-size: 13px; }
+  .cycle-stats .stat { color: var(--muted); }
+  .cycle-stats .stat strong { color: var(--text); font-weight: 700; }
+  .badge {
+    display: inline-block; font-size: 10px; padding: 1px 5px;
+    border-radius: 4px; margin-left: 4px; font-weight: 600;
+    vertical-align: middle;
+  }
+  .badge-v { background: #fef3c7; color: #92400e; }
+  .badge-status { background: #fee2e2; color: #991b1b; }
+
+  /* 空・スケルトン */
+  .empty-state {
+    text-align: center; padding: 40px 16px; color: var(--muted);
+  }
+  .empty-state .emoji { font-size: 32px; }
+  .empty-state p { margin: 10px 0 4px; font-size: 13px; }
+
+  .skeleton-card {
+    background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px; margin-bottom: 6px;
+    display: flex; gap: 12px; align-items: center;
+    min-height: 60px;
+  }
+  .skeleton-bar {
+    height: 12px; border-radius: 4px;
+    background: linear-gradient(90deg, var(--skeleton) 0%, var(--skeleton-shine) 50%, var(--skeleton) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+  }
+
+  .load-more-wrap {
+    text-align: center; margin: 12px 0 8px;
+  }
+  .load-more-wrap button { font-size: 13px; padding: 8px 16px; min-height: 36px; }
+
+  /* ── 同期インジケータ ── */
+  #sync-indicator {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--surface); border-top: 1px solid var(--border);
+    padding: 8px 16px; font-size: 13px; color: var(--muted);
+    display: flex; justify-content: space-between; align-items: center;
+    flex: 0 0 auto; z-index: 20;
+  }
+  #sync-indicator.alert { background: #fef3c7; color: #92400e; }
+
+  /* ── モーダル ── */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 16px;
+  }
+  .modal {
+    background: var(--surface); border-radius: 14px;
+    width: 100%; max-width: 480px; max-height: 90vh;
+    overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+  }
+  .modal-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    font-size: 17px; font-weight: 600;
+  }
+  .modal-body { padding: 20px; overflow-y: auto; }
+  .modal-footer {
+    padding: 12px 20px; border-top: 1px solid var(--border);
+    display: flex; gap: 8px; justify-content: flex-end;
+  }
+
+  /* ── フォーム ── */
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .form-group { margin-bottom: 16px; }
+  input[type="text"], input[type="number"], select, textarea {
+    font: inherit; width: 100%;
+    padding: 10px 12px; min-height: 44px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface);
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  }
+  .date-input-group {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; align-items: end;
+  }
+  .date-input-group .field-label {
+    font-size: 12px; color: var(--muted); margin-bottom: 4px;
+  }
+  .date-input-group input,
+  .date-input-group select { text-align: center; font-size: 18px; font-weight: 600; }
+  .line-radio-group { display: flex; gap: 8px; }
+  .line-radio {
+    flex: 1; text-align: center; padding: 14px;
+    border: 2px solid var(--border); border-radius: 8px;
+    cursor: pointer; font-weight: 500;
+  }
+  .line-radio.selected {
+    border-color: var(--accent); background: #eff6ff; color: var(--accent);
+    font-weight: 700;
+  }
+  .dept-radio-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+  .dept-radio {
+    padding: 14px; border: 2px solid var(--border); border-radius: 8px; cursor: pointer;
+  }
+  .dept-radio.selected { border-color: var(--accent); background: #eff6ff; }
+  .error-text { color: var(--error); font-size: 13px; margin-top: 4px; }
+  .info-text { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  .confirm-message { font-size: 15px; line-height: 1.6; }
+  .confirm-message .highlight {
+    background: #fef3c7; padding: 2px 6px; border-radius: 4px; font-weight: 600;
+  }
+
+  /* ── 縦持ち（狭幅）対応: 縦積みにフォールバック ── */
+  @media (max-width: 700px) {
+    .split-view { grid-template-columns: 1fr; }
+    .line-column { border-right: none; border-bottom: 1px solid var(--border); }
+    .header-bar {
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    h1, .new-cycle-btn, .header-right { justify-self: stretch; text-align: center; }
+    .header-right { justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-bar">
+    <h1>充填停止記録</h1>
+    <button class="new-cycle-btn" onclick="showNewCycleModal()">+ 日報新規作成</button>
+    <div class="header-right">
+      <span class="dept-pill empty" id="dept-pill" onclick="showDeptModal()">部署を選択</span>
+      <button class="reload-btn" id="reload-btn" onclick="reloadAll()" title="一覧を更新">
+        <span class="reload-icon">↻</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="split-view">
+  <section class="line-column" data-line="2L">
+    <div class="line-header">
+      <span class="line-label">2L</span>
+      <span class="year-label" id="year-label-2L">—</span>
+    </div>
+    <div class="cycle-list" id="cycle-list-2L">
+      <div class="skeleton-card"><div class="skeleton-bar" style="width: 40px; height: 22px;"></div><div style="flex:1"><div class="skeleton-bar" style="width: 60%;"></div><div class="skeleton-bar" style="width: 40%; margin-top: 6px;"></div></div></div>
+      <div class="skeleton-card"><div class="skeleton-bar" style="width: 40px; height: 22px;"></div><div style="flex:1"><div class="skeleton-bar" style="width: 70%;"></div><div class="skeleton-bar" style="width: 45%; margin-top: 6px;"></div></div></div>
+      <div class="skeleton-card"><div class="skeleton-bar" style="width: 40px; height: 22px;"></div><div style="flex:1"><div class="skeleton-bar" style="width: 50%;"></div><div class="skeleton-bar" style="width: 35%; margin-top: 6px;"></div></div></div>
+    </div>
+    <div class="load-more-wrap" id="load-more-2L" style="display: none;">
+      <button class="btn-secondary" onclick="loadMore('2L')">もっと見る</button>
+    </div>
+  </section>
+
+  <section class="line-column" data-line="500ml">
+    <div class="line-header">
+      <span class="line-label">500ml</span>
+      <span class="year-label" id="year-label-500ml">—</span>
+    </div>
+    <div class="cycle-list" id="cycle-list-500ml">
+      <div class="skeleton-card"><div class="skeleton-bar" style="width: 40px; height: 22px;"></div><div style="flex:1"><div class="skeleton-bar" style="width: 60%;"></div><div class="skeleton-bar" style="width: 40%; margin-top: 6px;"></div></div></div>
+      <div class="skeleton-card"><div class="skeleton-bar" style="width: 40px; height: 22px;"></div><div style="flex:1"><div class="skeleton-bar" style="width: 70%;"></div><div class="skeleton-bar" style="width: 45%; margin-top: 6px;"></div></div></div>
+      <div class="skeleton-card"><div class="skeleton-bar" style="width: 40px; height: 22px;"></div><div style="flex:1"><div class="skeleton-bar" style="width: 50%;"></div><div class="skeleton-bar" style="width: 35%; margin-top: 6px;"></div></div></div>
+    </div>
+    <div class="load-more-wrap" id="load-more-500ml" style="display: none;">
+      <button class="btn-secondary" onclick="loadMore('500ml')">もっと見る</button>
+    </div>
+  </section>
+</main>
+
+<div id="sync-indicator">
+  <span id="sync-text">未送信: 0件</span>
+  <span id="sync-time" style="font-size: 11px;"></span>
+</div>
+
+<!-- ─── 部署選択モーダル ─── -->
+<div class="modal-backdrop" id="dept-modal" style="display: none;">
+  <div class="modal">
+    <div class="modal-header">この端末の使用部署を選択</div>
+    <div class="modal-body">
+      <div class="info-text" style="margin-bottom: 12px;">
+        登録される停止記録には、ここで選択した部署が記録されます。<br>
+        後から設定で変更できます。
+      </div>
+      <div class="dept-radio-list" id="dept-radio-list">
+        <div class="info-text">読み込み中…</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="dept-confirm-btn" onclick="confirmDept()" disabled>確定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 日報新規作成モーダル ─── -->
+<div class="modal-backdrop" id="new-cycle-modal" style="display: none;">
+  <div class="modal">
+    <div class="modal-header">日報新規作成</div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>製造日（サイクル開始日）</label>
+        <div class="date-input-group">
+          <div>
+            <div class="field-label">年</div>
+            <select id="input-year"></select>
+          </div>
+          <div>
+            <div class="field-label">月</div>
+            <select id="input-month"></select>
+          </div>
+          <div>
+            <div class="field-label">日</div>
+            <select id="input-day"></select>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>ライン</label>
+        <div class="line-radio-group" id="line-radio-group"></div>
+      </div>
+      <div class="error-text" id="new-cycle-error" style="display: none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('new-cycle-modal')">キャンセル</button>
+      <button class="btn-primary" id="new-cycle-submit" onclick="submitNewCycle()">作成する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 新年シート作成確認モーダル ─── -->
+<div class="modal-backdrop" id="newyear-confirm-modal" style="display: none;">
+  <div class="modal">
+    <div class="modal-header">⚠ 新しい年の記録シート</div>
+    <div class="modal-body">
+      <div class="confirm-message">
+        <span class="highlight" id="newyear-label">2027年</span>の新しい記録シートを作成します。<br><br>
+        この年で日報を作成するのは初回です。よろしいですか？
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('newyear-confirm-modal')">キャンセル</button>
+      <button class="btn-primary" id="newyear-confirm-btn" onclick="confirmNewYear()">作成する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================
+//  状態
+// =====================================================
+const APP_URL = '<?= appUrl ?>';
+const LINES = ['2L', '500ml'];
+
+const STATE = {
+  department: localStorage.getItem('user_department') || null,
+  currentYear: new Date().getFullYear(),
+  departments: [],
+  selectedDept: null,
+  // ラインごとの一覧キャッシュ
+  cycleCache: { '2L': null, '500ml': null },
+  // マスタ先読み
+  mastersLoaded: false,
+  masters: null,
+  // 新規作成モーダル一時データ
+  pendingCycle: null,
+  // ライン選択肢（モーダル用）
+  lineOptions: null
+};
+
+// =====================================================
+//  GAS呼び出し Promise化
+// =====================================================
+function gas(method, ...args) {
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(reject)
+      [method](...args);
+  });
+}
+
+// =====================================================
+//  初期化
+// =====================================================
+window.addEventListener('DOMContentLoaded', () => {
+  updateDeptPill();
+  document.getElementById('year-label-2L').textContent  = STATE.currentYear + '年';
+  document.getElementById('year-label-500ml').textContent = STATE.currentYear + '年';
+
+  // ── 両ライン並列ロード（initialLoad は2L＋部署マスタを1RTTで返す）
+  gas('api_initialLoad', '2L')
+    .then(data => {
+      STATE.departments = data.departments || [];
+      STATE.lineOptions = data.lines || [];
+      buildLineRadios(STATE.lineOptions);
+      STATE.cycleCache['2L'] = data.cycles;
+      renderCycles('2L');
+      // 部署未選択ならモーダル
+      if (!STATE.department) setTimeout(showDeptModal, 200);
+    })
+    .catch(err => showError('2L', '初期取得失敗: ' + err.message));
+
+  gas('api_getCycles', { year: STATE.currentYear, line: '500ml' })
+    .then(r => {
+      STATE.cycleCache['500ml'] = r;
+      renderCycles('500ml');
+    })
+    .catch(err => showError('500ml', '取得失敗: ' + err.message));
+
+  // マスタ群の先読み（記録画面で使う）
+  setTimeout(() => {
+    gas('api_getMasters')
+      .then(m => { STATE.masters = m; STATE.mastersLoaded = true; })
+      .catch(() => {});
+  }, 1500);
+
+  // visibilitychange で下書き保存
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) saveDraftToLocalStorage();
+  });
+});
+
+// =====================================================
+//  一覧描画
+// =====================================================
+function renderCycles(line) {
+  const list = document.getElementById('cycle-list-' + line);
+  const loadMore = document.getElementById('load-more-' + line);
+  const data = STATE.cycleCache[line];
+  if (!data || !data.cycles || data.cycles.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="emoji">📋</div>
+        <p>${STATE.currentYear}年の${line}日報はまだありません</p>
+        <p style="font-size: 12px;">「+ 日報新規作成」から登録してください</p>
+      </div>`;
+    loadMore.style.display = 'none';
+    return;
+  }
+
+  // 月単位グループ化
+  const groups = {};
+  data.cycles.forEach(c => {
+    const ym = c.productionDate.slice(0, 7);
+    (groups[ym] = groups[ym] || []).push(c);
+  });
+  const ymKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+
+  list.innerHTML = ymKeys.map(ym => {
+    const [y, m] = ym.split('-');
+    return `
+      <div class="month-group">
+        <div class="month-label">${y}年${parseInt(m, 10)}月</div>
+        ${groups[ym].map(renderCycleCard).join('')}
+      </div>`;
+  }).join('');
+
+  loadMore.style.display = data.hasMore ? 'block' : 'none';
+}
+
+function renderCycleCard(c) {
+  const parts = c.productionDate.split('-');
+  const dateLabel = `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
+  const versionBadge = (c.version > 1)
+    ? `<span class="badge badge-v">v${c.version}</span>` : '';
+  const statusBadge = (c.status === '重複未統合')
+    ? `<span class="badge badge-status">統合待ち</span>` : '';
+  const timesLine = formatCycleTimes(c.productionStartAt, c.productionEndAt, c.productionDate);
+  return `
+    <div class="cycle-card" onclick="openCycle('${c.cycleID}')">
+      <div class="cycle-date">${dateLabel}</div>
+      <div class="cycle-info">
+        <div class="cycle-id">${c.cycleID}${versionBadge}${statusBadge}</div>
+        <div class="cycle-meta">
+          <span class="cycle-times">${timesLine}</span>
+          <span class="cycle-stats">
+            <span class="stat">停止 <strong>${c.stopCount || 0}</strong>件</span>
+            <span class="stat" style="margin-left: 8px;">合計 <strong>${c.totalStopMinutes || 0}</strong>分</span>
+          </span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function formatCycleTimes(startIso, endIso, productionDate) {
+  if (!startIso && !endIso) return '<span class="cycle-times-muted">未開始</span>';
+  const startStr = startIso ? hhmm(startIso) : '?';
+  let endPart;
+  if (!endIso) {
+    endPart = '<span class="cycle-times-muted">進行中</span>';
+  } else {
+    const startDate = startIso ? startIso.slice(0, 10) : productionDate;
+    const endDate = endIso.slice(0, 10);
+    if (endDate === startDate) {
+      endPart = '終了 ' + hhmm(endIso);
+    } else {
+      endPart = '終了 ' + mdLabel(endDate) + ' ' + hhmm(endIso);
+    }
+  }
+  return `開始 ${startStr} → ${endPart}`;
+}
+
+function hhmm(iso) {
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+function mdLabel(dateStr) {
+  const p = dateStr.split('-');
+  return parseInt(p[1], 10) + '/' + parseInt(p[2], 10);
+}
+
+function showSkeleton(line) {
+  document.getElementById('cycle-list-' + line).innerHTML = `
+    <div class="skeleton-card"><div class="skeleton-bar" style="width: 40px; height: 22px;"></div><div style="flex:1"><div class="skeleton-bar" style="width: 60%;"></div><div class="skeleton-bar" style="width: 40%; margin-top: 6px;"></div></div></div>
+    <div class="skeleton-card"><div class="skeleton-bar" style="width: 40px; height: 22px;"></div><div style="flex:1"><div class="skeleton-bar" style="width: 70%;"></div><div class="skeleton-bar" style="width: 45%; margin-top: 6px;"></div></div></div>`;
+}
+
+function showError(line, msg) {
+  document.getElementById('cycle-list-' + line).innerHTML = `
+    <div class="empty-state"><div class="emoji">⚠</div><p>${msg}</p></div>`;
+}
+
+// =====================================================
+//  もっと見る（ライン別）
+// =====================================================
+function loadMore(line) {
+  const cache = STATE.cycleCache[line];
+  if (!cache || !cache.hasMore) return;
+  gas('api_getCycles', {
+    year: STATE.currentYear,
+    line: line,
+    beforeDate: cache.nextBeforeDate
+  }).then(r => {
+    cache.cycles = cache.cycles.concat(r.cycles);
+    cache.hasMore = r.hasMore;
+    cache.nextBeforeDate = r.nextBeforeDate;
+    renderCycles(line);
+  });
+}
+
+// =====================================================
+//  部署選択モーダル
+// =====================================================
+function showDeptModal() {
+  document.getElementById('dept-modal').style.display = 'flex';
+  const list = document.getElementById('dept-radio-list');
+  if (STATE.departments.length === 0) {
+    list.innerHTML = `
+      <div class="form-group">
+        <label>部署名（自由入力）</label>
+        <input type="text" id="dept-free-input" placeholder="例: 充填課" oninput="onDeptFreeInput()">
+      </div>`;
+  } else {
+    list.innerHTML = STATE.departments.map(d => `
+      <div class="dept-radio" data-name="${d.name}" onclick="selectDept(this)">${d.name}</div>
+    `).join('');
+  }
+  if (STATE.department) {
+    const cur = list.querySelector(`[data-name="${STATE.department}"]`);
+    if (cur) selectDept(cur);
+  }
+}
+
+function selectDept(el) {
+  document.querySelectorAll('.dept-radio').forEach(d => d.classList.remove('selected'));
+  el.classList.add('selected');
+  STATE.selectedDept = el.dataset.name;
+  document.getElementById('dept-confirm-btn').disabled = false;
+}
+
+function onDeptFreeInput() {
+  const v = document.getElementById('dept-free-input').value.trim();
+  STATE.selectedDept = v;
+  document.getElementById('dept-confirm-btn').disabled = !v;
+}
+
+function confirmDept() {
+  if (!STATE.selectedDept) return;
+  STATE.department = STATE.selectedDept;
+  localStorage.setItem('user_department', STATE.department);
+  updateDeptPill();
+  closeModal('dept-modal');
+}
+
+function updateDeptPill() {
+  const pill = document.getElementById('dept-pill');
+  if (STATE.department) {
+    pill.textContent = STATE.department;
+    pill.classList.remove('empty');
+  } else {
+    pill.textContent = '部署を選択';
+    pill.classList.add('empty');
+  }
+}
+
+// =====================================================
+//  日報新規作成モーダル
+// =====================================================
+function buildLineRadios(lines) {
+  const wrap = document.getElementById('line-radio-group');
+  wrap.innerHTML = lines.map(l => `
+    <div class="line-radio" data-key="${l.key}" onclick="selectLine(this)">${l.display}</div>
+  `).join('');
+}
+
+function selectLine(el) {
+  document.querySelectorAll('.line-radio').forEach(d => d.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function showNewCycleModal() {
+  if (!STATE.department) { showDeptModal(); return; }
+  if (!STATE.lineOptions) {
+    alert('初期データ読み込み中です。少し待ってからもう一度お試しください。');
+    return;
+  }
+  // セレクト構築（年=今年と来年のみ、月=1-12、日=1-31）
+  const t = new Date();
+  const now = t.getFullYear();
+  buildSelect('input-year', [now, now + 1], now);
+  buildSelect('input-month', range(1, 12), t.getMonth() + 1);
+  buildSelect('input-day', range(1, 31), t.getDate());
+  // デフォルトはライン未選択（誤入力防止）
+  document.querySelectorAll('.line-radio').forEach(d => d.classList.remove('selected'));
+  document.getElementById('new-cycle-error').style.display = 'none';
+  document.getElementById('new-cycle-modal').style.display = 'flex';
+}
+
+function buildSelect(id, values, selected) {
+  const el = document.getElementById(id);
+  el.innerHTML = values.map(v =>
+    `<option value="${v}"${v === selected ? ' selected' : ''}>${v}</option>`
+  ).join('');
+}
+
+function range(from, to) {
+  const arr = [];
+  for (let i = from; i <= to; i++) arr.push(i);
+  return arr;
+}
+
+function validateNewCycle() {
+  const y = parseInt(document.getElementById('input-year').value, 10);
+  const m = parseInt(document.getElementById('input-month').value, 10);
+  const d = parseInt(document.getElementById('input-day').value, 10);
+  const lineEl = document.querySelector('.line-radio.selected');
+  const errEl = document.getElementById('new-cycle-error');
+  errEl.style.display = 'none';
+
+  if (!lineEl) return showFormError('ラインを選択してください');
+
+  // 存在しない日付チェック（4/31, 6/31, 9/31, 11/31, 2/29-31 など）
+  const test = new Date(y, m - 1, d);
+  if (test.getFullYear() !== y || test.getMonth() !== m - 1 || test.getDate() !== d) {
+    return showFormError(`${y}年${m}月${d}日は存在しない日付です`);
+  }
+  const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  return { ok: true, year: y, dateStr, line: lineEl.dataset.key };
+
+  function showFormError(msg) {
+    errEl.textContent = msg; errEl.style.display = 'block';
+    return { ok: false };
+  }
+}
+
+function submitNewCycle() {
+  const v = validateNewCycle();
+  if (!v.ok) return;
+
+  const currentYear = new Date().getFullYear();
+  STATE.pendingCycle = v;
+
+  if (v.year !== currentYear) {
+    document.getElementById('newyear-label').textContent = v.year + '年';
+    document.getElementById('newyear-confirm-modal').style.display = 'flex';
+    return;
+  }
+  executeCreateCycle(v);
+}
+
+function confirmNewYear() {
+  closeModal('newyear-confirm-modal');
+  if (STATE.pendingCycle) executeCreateCycle(STATE.pendingCycle);
+}
+
+function executeCreateCycle(v) {
+  const btn = document.getElementById('new-cycle-submit');
+  btn.disabled = true;
+  btn.textContent = '作成中…';
+
+  gas('api_createCycle', {
+    line: v.line,
+    productionDate: v.dateStr,
+    department: STATE.department
+  }).then(res => {
+    btn.disabled = false;
+    btn.textContent = '作成する';
+    if (!res.success) {
+      const errEl = document.getElementById('new-cycle-error');
+      errEl.textContent = res.error || '作成に失敗しました';
+      errEl.style.display = 'block';
+      return;
+    }
+    closeModal('new-cycle-modal');
+    // 作成したサイクルの記録画面へ遷移
+    openCycle(res.cycleID);
+  }).catch(err => {
+    btn.disabled = false;
+    btn.textContent = '作成する';
+    const errEl = document.getElementById('new-cycle-error');
+    errEl.textContent = '通信エラー: ' + err.message;
+    errEl.style.display = 'block';
+  });
+}
+
+// =====================================================
+//  共通
+// =====================================================
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function reloadAll() {
+  const btn = document.getElementById('reload-btn');
+  btn.classList.add('loading');
+
+  // キャッシュクリア & スケルトン表示
+  STATE.cycleCache = { '2L': null, '500ml': null };
+  showSkeleton('2L');
+  showSkeleton('500ml');
+
+  // 並列で両ライン取得
+  const p1 = gas('api_initialLoad', '2L').then(data => {
+    STATE.departments = data.departments || [];
+    STATE.lineOptions = data.lines || [];
+    buildLineRadios(STATE.lineOptions);
+    STATE.cycleCache['2L'] = data.cycles;
+    renderCycles('2L');
+  }).catch(err => showError('2L', '更新失敗: ' + err.message));
+
+  const p2 = gas('api_getCycles', { year: STATE.currentYear, line: '500ml' }).then(r => {
+    STATE.cycleCache['500ml'] = r;
+    renderCycles('500ml');
+  }).catch(err => showError('500ml', '更新失敗: ' + err.message));
+
+  // マスタも更新
+  const p3 = gas('api_getMasters').then(m => {
+    STATE.masters = m; STATE.mastersLoaded = true;
+  }).catch(() => {});
+
+  Promise.all([p1, p2, p3]).finally(() => {
+    btn.classList.remove('loading');
+  });
+}
+
+function openCycle(cycleID) {
+  window.top.location.href = APP_URL + '?cycle=' + encodeURIComponent(cycleID);
+}
+
+function saveDraftToLocalStorage() {
+  const y = document.getElementById('input-year');
+  if (!y) return;
+  const draft = {
+    year: y.value,
+    month: document.getElementById('input-month').value,
+    day: document.getElementById('input-day').value
+  };
+  localStorage.setItem('new_cycle_draft', JSON.stringify(draft));
+}
+</script>
+
+</body>
+</html>
