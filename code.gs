@@ -448,6 +448,66 @@ function api_updateStopRecordEnd(payload) {
   }
 }
 
+/**
+ * 停止ログの任意フィールドを更新する（順次入力用）
+ * payload.fields は { equipment, reason, action, charge, crEntry, wastage, ufTemp, teaTemp } の部分集合
+ * スタート時刻は別API (api_updateStopRecordEnd) を使うこと
+ */
+function api_updateStopRecordFields(payload) {
+  const logID = payload.logID;
+  const fields = payload.fields || {};
+  if (!logID) return { success: false, error: 'logID は必須です' };
+
+  const cycleID = _cycleFromLogID(logID);
+  if (!cycleID) return { success: false, error: 'logIDからの親特定失敗: ' + logID };
+  const year = _yearFromCycleID(cycleID);
+  if (!year) return { success: false, error: '年抽出失敗' };
+
+  const sheet = _getYearlySheet(CONFIG.SHEET_PREFIX_LOG + year);
+  if (!sheet) return { success: false, error: '停止ログシートがありません' };
+
+  const fieldMap = {
+    equipment: '停止設備',
+    reason:    '停止理由',
+    action:    '対応内容',
+    charge:    '担当',
+    crEntry:   'CR入室',
+    wastage:   '廃棄本数',
+    ufTemp:    'UF温度',
+    teaTemp:   'TEA温度'
+  };
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    if (sheet.getLastRow() < 2) return { success: false, error: 'ログ行が見つかりません: ' + logID };
+    const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i][0] === logID) {
+        const row = i + 2;
+        Object.keys(fields).forEach(key => {
+          const colName = fieldMap[key];
+          if (!colName) return;
+          let value = fields[key];
+          if (key === 'wastage') value = value ? parseInt(value, 10) : 0;
+          if (value == null) value = '';
+          sheet.getRange(row, LC[colName] + 1).setValue(value);
+        });
+        // マスタへの自動追加
+        if (fields.equipment) _bumpMasterEntry(CONFIG.SHEET_EQUIPMENT, fields.equipment);
+        if (fields.reason)    _bumpMasterEntry(CONFIG.SHEET_REASON, fields.reason);
+        if (fields.action)    _bumpMasterEntry(CONFIG.SHEET_ACTION, fields.action);
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'ログ行が見つかりません: ' + logID };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 // =====================================================
 //  内部関数
 // =====================================================

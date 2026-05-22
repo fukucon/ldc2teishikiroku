@@ -281,10 +281,47 @@
     100% { background-position: -100% 0; }
   }
 
+  /* 追加バー（コンパクト1行） */
+  .add-bar {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .add-bar-field { flex-shrink: 0; }
+  .add-bar-action { align-self: flex-end; }
+
+  /* 詳細パネル */
+  .detail-panel {
+    margin-top: 16px;
+    border: 1.5px solid var(--accent);
+    border-radius: 10px;
+    padding: 14px;
+    background: #f0f6ff;
+  }
+  .detail-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .field-save-ind {
+    font-size: 10px;
+    color: var(--muted);
+    display: block;
+    min-height: 14px;
+  }
+  .field-save-ind.saving { color: var(--warn); }
+  .field-save-ind.saved  { color: var(--success); }
+  .field-save-ind.error  { color: var(--error); }
+
   /* 狭幅 */
   @media (max-width: 700px) {
     .grid-2, .grid-3 { grid-template-columns: 1fr; }
-    .add-time-row { flex-direction: column; align-items: stretch; }
+    .add-bar { flex-direction: column; align-items: stretch; }
   }
 </style>
 </head>
@@ -330,8 +367,15 @@
   <!-- 停止記録の追加 -->
   <section class="section">
     <h2 class="section-title">＋ 停止記録の追加</h2>
-    <div class="add-time-row">
-      <div>
+
+    <!-- datalist（ページ全体で共有） -->
+    <datalist id="equipment-list"></datalist>
+    <datalist id="reason-list"></datalist>
+    <datalist id="action-list"></datalist>
+
+    <!-- Step 1: ストップ時刻だけ入れて追加 -->
+    <div class="add-bar">
+      <div class="add-bar-field">
         <div class="field-label">停止日</div>
         <div class="date-inline">
           <select id="stop-day-month"></select>
@@ -339,65 +383,80 @@
           <select id="stop-day-day"></select>
         </div>
       </div>
-      <div>
+      <div class="add-bar-field">
         <div class="field-label">ストップ時刻</div>
-        <input type="time" id="stop-stop-time">
+        <input type="time" id="stop-stop-time" style="width: 150px;">
+      </div>
+      <div class="add-bar-action">
+        <button class="btn-primary" id="stop-add-btn" onclick="addStopRecord()">追加</button>
       </div>
     </div>
+    <div class="error-text" id="stop-error" style="display: none;"></div>
 
-    <div class="grid-3">
-      <div>
-        <div class="field-label">停止設備</div>
-        <input type="text" id="stop-equipment" list="equipment-list" placeholder="選択or入力">
-        <datalist id="equipment-list"></datalist>
+    <!-- Step 2: 詳細入力パネル（追加後に表示） -->
+    <div class="detail-panel" id="detail-panel" style="display: none;">
+      <div class="detail-panel-header">
+        <span id="detail-panel-title">詳細を入力</span>
+        <button class="btn-secondary" style="padding: 6px 12px; font-size: 13px;" onclick="closeDetailPanel()">✕ 閉じる</button>
       </div>
-      <div>
-        <div class="field-label">停止理由</div>
-        <input type="text" id="stop-reason" list="reason-list" placeholder="選択or入力">
-        <datalist id="reason-list"></datalist>
-      </div>
-      <div>
-        <div class="field-label">対応内容</div>
-        <input type="text" id="stop-action" list="action-list" placeholder="選択or入力">
-        <datalist id="action-list"></datalist>
-      </div>
-    </div>
-
-    <div class="grid-3" style="margin-top: 12px;">
-      <div>
-        <div class="field-label">担当</div>
-        <input type="text" id="stop-charge">
-      </div>
-      <div>
-        <div class="field-label">CR入室</div>
-        <div class="radio-group" id="cr-entry-group">
-          <div class="radio-option" data-value="有" onclick="selectRadio(this)">有</div>
-          <div class="radio-option" data-value="無" onclick="selectRadio(this)">無</div>
-          <div class="radio-option" data-value="" onclick="selectRadio(this)">—</div>
+      <div class="grid-3" style="margin-top: 12px;">
+        <div>
+          <div class="field-label">停止設備</div>
+          <input type="text" id="det-equipment" list="equipment-list" placeholder="選択or入力"
+            onblur="saveDetailField('equipment')">
+          <span class="field-save-ind" id="det-ind-equipment"></span>
+        </div>
+        <div>
+          <div class="field-label">停止理由</div>
+          <input type="text" id="det-reason" list="reason-list" placeholder="選択or入力"
+            onblur="saveDetailField('reason')">
+          <span class="field-save-ind" id="det-ind-reason"></span>
+        </div>
+        <div>
+          <div class="field-label">対応内容</div>
+          <input type="text" id="det-action" list="action-list" placeholder="選択or入力"
+            onblur="saveDetailField('action')">
+          <span class="field-save-ind" id="det-ind-action"></span>
         </div>
       </div>
-      <div>
-        <div class="field-label">廃棄本数</div>
-        <input type="number" id="stop-wastage" min="0" placeholder="0">
+      <div class="grid-3" style="margin-top: 12px;">
+        <div>
+          <div class="field-label">担当</div>
+          <input type="text" id="det-charge" onblur="saveDetailField('charge')">
+          <span class="field-save-ind" id="det-ind-charge"></span>
+        </div>
+        <div>
+          <div class="field-label">CR入室</div>
+          <div class="radio-group" id="det-cr-entry-group">
+            <div class="radio-option" data-value="有" onclick="selectDetailRadio(this)">有</div>
+            <div class="radio-option" data-value="無" onclick="selectDetailRadio(this)">無</div>
+            <div class="radio-option" data-value="" onclick="selectDetailRadio(this)">—</div>
+          </div>
+          <span class="field-save-ind" id="det-ind-crEntry"></span>
+        </div>
+        <div>
+          <div class="field-label">廃棄本数</div>
+          <input type="number" id="det-wastage" min="0" placeholder="0" onblur="saveDetailField('wastage')">
+          <span class="field-save-ind" id="det-ind-wastage"></span>
+        </div>
       </div>
-    </div>
-
-    <div class="grid-2" style="margin-top: 12px;">
-      <div>
-        <div class="field-label">UF温度</div>
-        <input type="number" id="stop-uf-temp" step="0.1">
+      <div class="grid-2" style="margin-top: 12px;">
+        <div>
+          <div class="field-label">UF温度</div>
+          <input type="number" id="det-uf-temp" step="0.1" onblur="saveDetailField('ufTemp')">
+          <span class="field-save-ind" id="det-ind-ufTemp"></span>
+        </div>
+        <div>
+          <div class="field-label">TEA温度</div>
+          <input type="number" id="det-tea-temp" step="0.1" onblur="saveDetailField('teaTemp')">
+          <span class="field-save-ind" id="det-ind-teaTemp"></span>
+        </div>
       </div>
-      <div>
-        <div class="field-label">TEA温度</div>
-        <input type="number" id="stop-tea-temp" step="0.1">
+      <div style="margin-top: 12px;">
+        <div class="field-label">スタート時刻</div>
+        <input type="time" id="det-start-time" onchange="saveDetailStartTime()" style="width: 160px;">
+        <span class="field-save-ind" id="det-ind-startTime"></span>
       </div>
-    </div>
-
-    <div class="error-text" id="stop-error" style="display: none;"></div>
-    <div style="margin-top: 14px; display: flex; gap: 8px; align-items: center;">
-      <button class="btn-primary" id="stop-add-btn" onclick="addStopRecord()">この内容で追加</button>
-      <span class="save-indicator" id="stop-save"></span>
-      <span class="info-note">※ スタート時刻は一覧から後で入力できます</span>
     </div>
   </section>
 
@@ -424,6 +483,8 @@ const STATE = {
   stopRecords: [],
   masters: null
 };
+
+let currentEditLogID = null;
 
 function gas(method, ...args) {
   return new Promise((resolve, reject) => {
@@ -739,19 +800,12 @@ function setSaveIndicator(id, state, text) {
 }
 
 // =====================================================
-//  停止記録 追加フォーム
+//  停止記録 追加フォーム（Step 1）
 // =====================================================
 function initStopForm() {
-  const p = STATE.cycle.productionDate.split('-');
-  buildSelect('stop-day-month', range(1, 12), parseInt(p[1], 10));
-  buildSelect('stop-day-day',   range(1, 31), parseInt(p[2], 10));
-  document.querySelectorAll('#cr-entry-group .radio-option').forEach(r => r.classList.remove('selected'));
-}
-
-function selectRadio(el) {
-  const group = el.parentElement;
-  group.querySelectorAll('.radio-option').forEach(d => d.classList.remove('selected'));
-  el.classList.add('selected');
+  const today = new Date();
+  buildSelect('stop-day-month', range(1, 12), today.getMonth() + 1);
+  buildSelect('stop-day-day',   range(1, 31), today.getDate());
 }
 
 function addStopRecord() {
@@ -761,40 +815,40 @@ function addStopRecord() {
   const m = parseInt(document.getElementById('stop-day-month').value, 10);
   const d = parseInt(document.getElementById('stop-day-day').value, 10);
   const stopTime = document.getElementById('stop-stop-time').value;
-  const equipment = document.getElementById('stop-equipment').value.trim();
-  const reason = document.getElementById('stop-reason').value.trim();
-  const action = document.getElementById('stop-action').value.trim();
-  const charge = document.getElementById('stop-charge').value.trim();
-  const crEntry = (document.querySelector('#cr-entry-group .radio-option.selected') || {}).dataset?.value || '';
-  const wastage = document.getElementById('stop-wastage').value;
-  const ufTemp = document.getElementById('stop-uf-temp').value;
-  const teaTemp = document.getElementById('stop-tea-temp').value;
+  if (!stopTime) {
+    errEl.textContent = 'ストップ時刻を入力してください';
+    errEl.style.display = 'block';
+    return;
+  }
 
-  if (!stopTime) return showStopError('ストップ時刻を入力してください');
-
-  // 停止日 妥当性
   const yearStr = STATE.cycle.productionDate.slice(0, 4);
   const test = new Date(parseInt(yearStr, 10), m - 1, d);
-  if (test.getMonth() !== m - 1) return showStopError(`${m}/${d}は存在しない日付です`);
+  if (test.getMonth() !== m - 1) {
+    errEl.textContent = m + '/' + d + 'は存在しない日付です';
+    errEl.style.display = 'block';
+    return;
+  }
   const stopDateStr = yearStr + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
   const stopIso = stopDateStr + 'T' + stopTime + ':00';
 
-  setSaveIndicator('stop-save', 'saving', '送信中…');
-  document.getElementById('stop-add-btn').disabled = true;
+  const btn = document.getElementById('stop-add-btn');
+  btn.disabled = true;
 
   gas('api_addStopRecord', {
     cycleID: STATE.cycle.cycleID,
     stopAt: stopIso,
-    startAt: '',  // 後から入力する運用
-    equipment, reason, action, charge, crEntry,
-    wastage: wastage ? parseInt(wastage, 10) : 0,
-    ufTemp, teaTemp,
+    startAt: '',
+    equipment: '', reason: '', action: '', charge: '', crEntry: '',
+    wastage: 0, ufTemp: '', teaTemp: '',
     recordDept: localStorage.getItem('user_department') || ''
   }).then(res => {
-    document.getElementById('stop-add-btn').disabled = false;
-    if (!res.success) { return showStopError(res.error || '追加失敗'); }
-    setSaveIndicator('stop-save', 'saved', '追加しました');
-    // 一覧再取得 + フォームクリア
+    btn.disabled = false;
+    if (!res.success) {
+      errEl.textContent = res.error || '追加失敗';
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('stop-stop-time').value = '';
     return gas('api_getCycleDetail', STATE.cycle.cycleID).then(detail => {
       if (detail.success) {
         STATE.cycle = detail.cycle;
@@ -805,29 +859,98 @@ function addStopRecord() {
         fillDatalist('reason-list', STATE.masters.reason);
         fillDatalist('action-list', STATE.masters.action);
       }
-      clearStopForm();
+      openDetailPanel(res.logID);
     });
   }).catch(err => {
-    document.getElementById('stop-add-btn').disabled = false;
-    showStopError('通信エラー: ' + err.message);
+    btn.disabled = false;
+    errEl.textContent = '通信エラー: ' + err.message;
+    errEl.style.display = 'block';
   });
-
-  function showStopError(msg) {
-    errEl.textContent = msg; errEl.style.display = 'block';
-    setSaveIndicator('stop-save', 'error', '');
-  }
 }
 
-function clearStopForm() {
-  document.getElementById('stop-stop-time').value = '';
-  document.getElementById('stop-equipment').value = '';
-  document.getElementById('stop-reason').value = '';
-  document.getElementById('stop-action').value = '';
-  document.getElementById('stop-charge').value = '';
-  document.getElementById('stop-wastage').value = '';
-  document.getElementById('stop-uf-temp').value = '';
-  document.getElementById('stop-tea-temp').value = '';
-  document.querySelectorAll('#cr-entry-group .radio-option').forEach(r => r.classList.remove('selected'));
+// =====================================================
+//  詳細パネル（Step 2）
+// =====================================================
+function openDetailPanel(logID) {
+  currentEditLogID = logID;
+  const panel = document.getElementById('detail-panel');
+  panel.style.display = '';
+  document.getElementById('detail-panel-title').textContent = 'ログ ' + logID + ' の詳細';
+  ['det-equipment','det-reason','det-action','det-charge','det-wastage','det-uf-temp','det-tea-temp','det-start-time'].forEach(function(id) {
+    document.getElementById(id).value = '';
+  });
+  document.querySelectorAll('#det-cr-entry-group .radio-option').forEach(function(r) { r.classList.remove('selected'); });
+  ['equipment','reason','action','charge','crEntry','wastage','ufTemp','teaTemp','startTime'].forEach(function(k) {
+    var el = document.getElementById('det-ind-' + k);
+    if (el) { el.textContent = ''; el.className = 'field-save-ind'; }
+  });
+  document.getElementById('det-equipment').focus();
+}
+
+function closeDetailPanel() {
+  currentEditLogID = null;
+  document.getElementById('detail-panel').style.display = 'none';
+}
+
+function saveDetailField(fieldKey) {
+  if (!currentEditLogID) return;
+  var inputMap = {
+    equipment: 'det-equipment',
+    reason:    'det-reason',
+    action:    'det-action',
+    charge:    'det-charge',
+    wastage:   'det-wastage',
+    ufTemp:    'det-uf-temp',
+    teaTemp:   'det-tea-temp'
+  };
+  var inputId = inputMap[fieldKey];
+  if (!inputId) return;
+  var value = document.getElementById(inputId).value.trim();
+  var indEl = document.getElementById('det-ind-' + fieldKey);
+  setFieldInd(indEl, 'saving', '保存中…');
+  var fields = {};
+  fields[fieldKey] = value;
+  gas('api_updateStopRecordFields', { logID: currentEditLogID, fields: fields }).then(function(res) {
+    if (res.success) setFieldInd(indEl, 'saved', '保存');
+    else setFieldInd(indEl, 'error', res.error || 'エラー');
+  }).catch(function(err) { setFieldInd(indEl, 'error', err.message); });
+}
+
+function saveDetailStartTime() {
+  if (!currentEditLogID) return;
+  var timeValue = document.getElementById('det-start-time').value;
+  var indEl = document.getElementById('det-ind-startTime');
+  setFieldInd(indEl, 'saving', '保存中…');
+  gas('api_updateStopRecordEnd', { logID: currentEditLogID, startTime: timeValue }).then(function(res) {
+    if (!res.success) { setFieldInd(indEl, 'error', res.error || 'エラー'); return; }
+    setFieldInd(indEl, 'saved', '保存');
+    var rec = STATE.stopRecords.find(function(r) { return r.logID === currentEditLogID; });
+    if (rec) { rec.startAt = res.startAt; rec.minutes = res.minutes; }
+    renderRecordList();
+  }).catch(function(err) { setFieldInd(indEl, 'error', err.message); });
+}
+
+function selectDetailRadio(el) {
+  var group = el.parentElement;
+  group.querySelectorAll('.radio-option').forEach(function(d) { d.classList.remove('selected'); });
+  el.classList.add('selected');
+  if (!currentEditLogID) return;
+  var value = el.dataset.value;
+  var indEl = document.getElementById('det-ind-crEntry');
+  setFieldInd(indEl, 'saving', '保存中…');
+  gas('api_updateStopRecordFields', { logID: currentEditLogID, fields: { crEntry: value } }).then(function(res) {
+    if (res.success) setFieldInd(indEl, 'saved', '保存');
+    else setFieldInd(indEl, 'error', res.error || 'エラー');
+  }).catch(function(err) { setFieldInd(indEl, 'error', err.message); });
+}
+
+function setFieldInd(el, state, text) {
+  if (!el) return;
+  el.className = 'field-save-ind ' + state;
+  el.textContent = text;
+  if (state === 'saved') {
+    setTimeout(function() { el.textContent = ''; el.className = 'field-save-ind'; }, 1800);
+  }
 }
 
 // =====================================================
