@@ -819,7 +819,7 @@ function addStopRecord() {
     cycleID: STATE.cycle.cycleID,
     stopAt: stopIso,
     startAt: '',
-    equipment: '', reason: '', action: '', charge: '', crEntry: '',
+    equipment: '', reason: '', action: '', charge: '', crEntry: '無',
     wastage: 0, ufTemp: '', teaTemp: '',
     recordDept: localStorage.getItem('user_department') || ''
   }).then(res => {
@@ -874,10 +874,9 @@ function renderRecordList() {
     const startVal = hasStart ? hhmmFromDate(new Date(r.startAt)) : '';
     const minutesStr = hasStart ? (r.minutes || 0) + '分' : '—';
     const lid = escapeAttr(r.logID);
-    const cr = r.crEntry || '';
+    const cr = r.crEntry || '無';   // 空なら 無 をデフォルトに
     const isCrYes = cr === '有';
     const isCrNo  = cr === '無';
-    const isCrNone = !isCrYes && !isCrNo;
     const stopDateStr = mdFromDate(stop);
     const startDateStr = hasStart ? mdFromDate(new Date(r.startAt)) : '';
     const showStartDate = hasStart && startDateStr !== stopDateStr;
@@ -946,7 +945,6 @@ function renderRecordList() {
               <div class="radio-group">
                 <div class="radio-option ${isCrYes ? 'selected' : ''}" data-value="有" onclick="selectRecordRadio(this, '${lid}')">有</div>
                 <div class="radio-option ${isCrNo ? 'selected' : ''}"  data-value="無" onclick="selectRecordRadio(this, '${lid}')">無</div>
-                <div class="radio-option ${isCrNone ? 'selected' : ''}" data-value="" onclick="selectRecordRadio(this, '${lid}')">—</div>
               </div>
               <span class="rec-ind" data-ind="${lid}-crEntry"></span>
             </div>
