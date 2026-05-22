@@ -141,42 +141,45 @@
   .field-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
   .info-note { font-size: 12px; color: var(--muted); }
 
-  /* 製造時間セクション: 1行コンパクト */
-  .section-prod { padding: 8px 14px; }
+  /* 製造時間セクション: 横幅いっぱい使った大きめレイアウト */
+  .section-prod { padding: 14px 18px; }
   .prod-time-line {
-    display: flex; align-items: center; gap: 10px;
-    flex-wrap: wrap; font-size: 15px;
+    display: flex; align-items: center; gap: 14px;
+    flex-wrap: wrap; font-size: 20px;
   }
   .prod-section-title {
-    font-size: 14px; font-weight: 700; color: var(--text);
+    font-size: 18px; font-weight: 700; color: var(--text);
+    flex-shrink: 0;
   }
   .prod-group {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 10px;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 18px;
     border: 2px solid;
     border-radius: 0;            /* 角が角 */
     background: var(--surface);
+    flex: 1 1 280px;
+    min-width: 0;
   }
   .prod-group.prod-start { border-color: #3b82f6; }
   .prod-group.prod-end   { border-color: #ef4444; }
-  .prod-label { font-weight: 700; font-size: 14px; }
+  .prod-label { font-weight: 700; font-size: 20px; flex-shrink: 0; }
   .prod-group.prod-start .prod-label { color: #1d4ed8; }
   .prod-group.prod-end   .prod-label { color: #b91c1c; }
   .prod-date-display {
-    font-size: 15px; font-weight: 700;
-    padding: 2px 4px;
+    font-size: 24px; font-weight: 700;
+    padding: 4px 6px;
     background: transparent; border-radius: 0; color: var(--text);
   }
-  .prod-separator { color: var(--muted); font-size: 18px; }
+  .prod-separator { color: var(--muted); font-size: 24px; flex-shrink: 0; }
   .prod-time-line select,
   .prod-time-line input[type="time"] {
     width: auto;
-    min-height: 32px; padding: 3px 6px;
-    font-size: 14px; font-weight: 600;
-    border: 1px solid #d1d5db; border-radius: 4px;
+    min-height: 48px; padding: 8px 12px;
+    font-size: 22px; font-weight: 700;
+    border: 1px solid #d1d5db; border-radius: 6px;
   }
-  .prod-time-line select { min-width: 55px; }
-  .prod-time-line input[type="time"] { min-width: 100px; }
+  .prod-time-line select { min-width: 76px; }
+  .prod-time-line input[type="time"] { min-width: 150px; }
 
   .save-indicator { font-size: 11px; color: var(--muted); margin-left: 4px; }
   .save-indicator.saving { color: var(--warn); }
