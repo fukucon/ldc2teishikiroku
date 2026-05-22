@@ -92,6 +92,9 @@
     background: #fef3c7; border: 1px solid #fcd34d;
     white-space: nowrap; flex-shrink: 0;
   }
+  .wake-pill.wake-fail {
+    color: #991b1b; background: #fee2e2; border-color: #fca5a5;
+  }
 
   /* ── セクション ── */
   main {
@@ -545,23 +548,32 @@ function pollUpdate() {
 const WAKE_LOCK_DURATION_MS = 60 * 60 * 1000;
 let wakeLock = null;
 let wakeLockDeadline = 0;
+let wakeLockFailed = false;
 
 function isWakeLockSupported() {
   return 'wakeLock' in navigator;
 }
 
 async function acquireWakeLock() {
-  if (!isWakeLockSupported()) return;
   if (Date.now() >= wakeLockDeadline) return;
+  if (!isWakeLockSupported()) {
+    wakeLockFailed = true;
+    updateWakeUI();
+    return;
+  }
   if (wakeLock) return;
   try {
     wakeLock = await navigator.wakeLock.request('screen');
+    wakeLockFailed = false;
     wakeLock.addEventListener('release', () => {
       wakeLock = null;
+      // 低電力モードなどOSによる強制解除か確認
+      if (Date.now() < wakeLockDeadline) wakeLockFailed = true;
       updateWakeUI();
     });
   } catch (e) {
-    // 端末側で拒否されても無視（既存機能はそのまま動く）
+    // 低電力モードONや端末拒否
+    wakeLockFailed = true;
   }
   updateWakeUI();
 }
@@ -589,13 +601,22 @@ function startWakeLock() {
 function updateWakeUI() {
   const el = document.getElementById('wake-status');
   if (!el) return;
-  if (wakeLock && Date.now() < wakeLockDeadline) {
+  if (Date.now() >= wakeLockDeadline) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = '';
+  if (wakeLockFailed) {
+    el.className = 'wake-pill wake-fail';
+    el.textContent = '⚠ 低電力モードをオフに';
+    el.title = '画面オフ防止が効いていません。端末の低電力モード（バッテリーセーバー）をオフにしてください。';
+  } else if (wakeLock) {
+    el.className = 'wake-pill';
     const remainMin = Math.ceil((wakeLockDeadline - Date.now()) / 60000);
-    el.style.display = '';
+    el.textContent = '🔒 画面オフ防止';
     el.title = '画面オフ防止中（残り約' + remainMin + '分）';
   } else {
     el.style.display = 'none';
-    el.title = '';
   }
 }
 
