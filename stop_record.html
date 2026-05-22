@@ -60,6 +60,30 @@
     font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace;
   }
 
+  /* ── 接続状態インジケータ ── */
+  .conn-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted);
+    padding: 6px 10px; border-radius: 999px;
+    background: #f1f3f4;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .conn-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #9ca3af; transition: background 0.2s, box-shadow 0.2s;
+  }
+  .conn-status.online { color: #065f46; background: #d1fae5; }
+  .conn-status.online .conn-dot {
+    background: var(--success); box-shadow: 0 0 0 3px rgba(5,150,105,0.18);
+  }
+  .conn-status.offline { color: #991b1b; background: #fee2e2; }
+  .conn-status.offline .conn-dot {
+    background: var(--error); box-shadow: 0 0 0 3px rgba(220,38,38,0.18);
+  }
+  .conn-status .conn-text-small {
+    font-size: 10px; opacity: 0.8;
+  }
+
   /* ── セクション ── */
   main {
     max-width: 920px; margin: 0 auto; padding: 16px;
@@ -251,6 +275,10 @@
       <span class="skeleton" style="width: 60px;"></span>
       <span class="skeleton" style="width: 120px;"></span>
     </div>
+    <div class="conn-status" id="conn-status" title="自動更新の状態">
+      <span class="conn-dot"></span>
+      <span id="conn-text">接続中…</span>
+    </div>
   </div>
 </header>
 
@@ -375,8 +403,94 @@ const STATE = {
 
 function gas(method, ...args) {
   return new Promise((resolve, reject) => {
-    google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[method](...args);
+    google.script.run
+      .withSuccessHandler(r => { setOnlineStatus(true); resolve(r); })
+      .withFailureHandler(e => { setOnlineStatus(false); reject(e); })
+      [method](...args);
   });
+}
+
+// =====================================================
+//  接続状態インジケータ + 自動更新
+// =====================================================
+const POLL_INTERVAL_MS = 15000;
+let pollTimer = null;
+
+function setOnlineStatus(online) {
+  const el = document.getElementById('conn-status');
+  const txt = document.getElementById('conn-text');
+  if (!el) return;
+  el.classList.toggle('online', !!online);
+  el.classList.toggle('offline', !online);
+  if (online) {
+    const now = new Date();
+    txt.innerHTML = 'オンライン <span class="conn-text-small">' +
+      String(now.getHours()).padStart(2, '0') + ':' +
+      String(now.getMinutes()).padStart(2, '0') + ':' +
+      String(now.getSeconds()).padStart(2, '0') + '</span>';
+  } else {
+    txt.textContent = 'オフライン';
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  pollTimer = setInterval(() => {
+    if (document.hidden) return;
+    pollUpdate();
+  }, POLL_INTERVAL_MS);
+}
+
+function stopAutoRefresh() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+function pollUpdate() {
+  if (!CYCLE_ID || !STATE.cycle) return;
+  gas('api_getCycleDetail', CYCLE_ID).then(res => {
+    if (res && res.success) softMerge(res);
+  }).catch(() => {
+    // 失敗時は setOnlineStatus(false) が gas() 内で実行される
+  });
+}
+
+// 入力中の値を壊さずに STATE と DOM を更新する
+function softMerge(detail) {
+  STATE.cycle = detail.cycle;
+  STATE.masters = detail.masters || STATE.masters || { equipment: [], reason: [], action: [] };
+
+  // datalist は別要素なので安全に差し替え可能
+  fillDatalist('equipment-list', STATE.masters.equipment);
+  fillDatalist('reason-list', STATE.masters.reason);
+  fillDatalist('action-list', STATE.masters.action);
+
+  // 製造開始時刻: focus 中はスキップ
+  const startEl = document.getElementById('prod-start-time');
+  if (startEl && document.activeElement !== startEl) {
+    startEl.value = detail.cycle.productionStartAt ? hhmm(detail.cycle.productionStartAt) : '';
+  }
+  // 製造終了 月/日/時刻: いずれかが focus 中ならスキップ
+  const endM = document.getElementById('prod-end-month');
+  const endD = document.getElementById('prod-end-day');
+  const endT = document.getElementById('prod-end-time');
+  const ae = document.activeElement;
+  if (endM && endD && endT && ae !== endM && ae !== endD && ae !== endT) {
+    if (detail.cycle.productionEndAt) {
+      const d = new Date(detail.cycle.productionEndAt);
+      endM.value = d.getMonth() + 1;
+      endD.value = d.getDate();
+      endT.value = hhmm(detail.cycle.productionEndAt);
+    } else {
+      endT.value = '';
+    }
+  }
+
+  // 停止記録一覧: end-input が編集中ならスキップ（次回反映）
+  STATE.stopRecords = detail.stopRecords || [];
+  const activeIsEnd = ae && ae.classList && ae.classList.contains('end-input');
+  if (!activeIsEnd) {
+    renderRecordList();
+  }
 }
 
 // =====================================================
@@ -393,8 +507,14 @@ window.addEventListener('DOMContentLoaded', () => {
     STATE.stopRecords = res.stopRecords || [];
     STATE.masters = res.masters || { equipment: [], reason: [], action: [] };
     renderAll();
+    startAutoRefresh();
   }).catch(err => {
     document.body.innerHTML = `<div style="padding: 40px;">⚠ 取得失敗: ${err.message}</div>`;
+  });
+
+  // 画面が表に戻ったら即時更新
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) pollUpdate();
   });
 });
 
