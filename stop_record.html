@@ -138,29 +138,42 @@
   .field-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
   .info-note { font-size: 12px; color: var(--muted); }
 
-  /* 製造時間セクション: 1行レイアウト */
+  /* 製造時間セクション: 1行コンパクト */
+  .section-prod { padding: 8px 14px; }
   .prod-time-line {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    font-size: 16px;
+    display: flex; align-items: center; gap: 10px;
+    flex-wrap: wrap; font-size: 15px;
   }
-  .prod-label { font-weight: 700; font-size: 15px; }
+  .prod-section-title {
+    font-size: 14px; font-weight: 700; color: var(--text);
+  }
+  .prod-group {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    border: 2px solid;
+    border-radius: 0;            /* 角が角 */
+    background: var(--surface);
+  }
+  .prod-group.prod-start { border-color: #3b82f6; }
+  .prod-group.prod-end   { border-color: #ef4444; }
+  .prod-label { font-weight: 700; font-size: 14px; }
+  .prod-group.prod-start .prod-label { color: #1d4ed8; }
+  .prod-group.prod-end   .prod-label { color: #b91c1c; }
   .prod-date-display {
-    font-size: 16px; font-weight: 700;
-    padding: 8px 12px;
-    background: #f1f5f9; border-radius: 6px; color: var(--text);
+    font-size: 15px; font-weight: 700;
+    padding: 2px 4px;
+    background: transparent; border-radius: 0; color: var(--text);
   }
-  .prod-separator { margin: 0 6px; color: var(--muted); font-size: 18px; }
+  .prod-separator { color: var(--muted); font-size: 18px; }
   .prod-time-line select,
   .prod-time-line input[type="time"] {
     width: auto;
-    min-height: 40px; padding: 6px 10px;
-    font-size: 16px; font-weight: 600;
+    min-height: 32px; padding: 3px 6px;
+    font-size: 14px; font-weight: 600;
+    border: 1px solid #d1d5db; border-radius: 4px;
   }
-  .prod-time-line select { min-width: 65px; }
-  .prod-time-line input[type="time"] { min-width: 110px; }
+  .prod-time-line select { min-width: 55px; }
+  .prod-time-line input[type="time"] { min-width: 100px; }
 
   .save-indicator { font-size: 11px; color: var(--muted); margin-left: 4px; }
   .save-indicator.saving { color: var(--warn); }
@@ -279,7 +292,6 @@
 
 <header>
   <div class="top-row">
-    <button class="back-btn" onclick="goBack()">← 戻る</button>
     <div class="cycle-title" id="cycle-title">
       <span class="skeleton" style="width: 60px;"></span>
       <span class="skeleton" style="width: 120px;"></span>
@@ -294,22 +306,24 @@
 
 <main>
   <!-- 製造時間 -->
-  <section class="section">
-    <h2 class="section-title">製造時間</h2>
+  <section class="section section-prod">
     <div class="prod-time-line">
-      <span class="prod-label">開始</span>
-      <span class="prod-date-display" id="prod-start-date-display">—</span>
-      <input type="time" id="prod-start-time" onchange="onProdStartChange()">
-      <span class="save-indicator" id="start-save"></span>
-
+      <span class="prod-section-title">製造時間</span>
+      <div class="prod-group prod-start">
+        <span class="prod-label">開始</span>
+        <span class="prod-date-display" id="prod-start-date-display">—</span>
+        <input type="time" id="prod-start-time" onchange="onProdStartChange()">
+        <span class="save-indicator" id="start-save"></span>
+      </div>
       <span class="prod-separator">〜</span>
-
-      <span class="prod-label">終了</span>
-      <select id="prod-end-month" onchange="onProdEndChange()"></select>
-      <span>/</span>
-      <select id="prod-end-day" onchange="onProdEndChange()"></select>
-      <input type="time" id="prod-end-time" onchange="onProdEndChange()">
-      <span class="save-indicator" id="end-save"></span>
+      <div class="prod-group prod-end">
+        <span class="prod-label">終了</span>
+        <select id="prod-end-month" onchange="onProdEndChange()"></select>
+        <span>/</span>
+        <select id="prod-end-day" onchange="onProdEndChange()"></select>
+        <input type="time" id="prod-end-time" onchange="onProdEndChange()">
+        <span class="save-indicator" id="end-save"></span>
+      </div>
     </div>
   </section>
 
