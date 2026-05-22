@@ -203,10 +203,16 @@
     width: 105px; min-width: 105px;  /* Safari 空欄時の縮みを防ぐ */
   }
 
-  .save-indicator { font-size: 11px; color: var(--muted); margin-left: 4px; }
-  .save-indicator.saving { color: var(--warn); }
-  .save-indicator.saved { color: var(--success); }
-  .save-indicator.error { color: var(--error); }
+  .save-indicator {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #d1d5db;        /* グレー: 待機 */
+    display: inline-block; vertical-align: middle;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  .save-indicator.saving { background: #facc15; }   /* 黄: 保存中 */
+  .save-indicator.saved  { background: #3b82f6; }   /* 青: 保存完了 */
+  .save-indicator.error  { background: #dc2626; }   /* 赤: エラー */
 
   /* 停止記録 追加フォーム */
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -306,12 +312,27 @@
     border-width: 1px;
   }
   .rec-ind {
-    font-size: 10px; color: var(--muted);
-    min-height: 0; display: block; margin-top: 1px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #d1d5db;        /* グレー: 待機 */
+    flex-shrink: 0;
+    display: inline-block; vertical-align: middle;
+    pointer-events: none;
+    transition: background 0.15s;
   }
-  .rec-ind.saving { color: var(--warn); }
-  .rec-ind.saved  { color: var(--success); }
-  .rec-ind.error  { color: var(--error); }
+  .rec-ind.saving { background: #facc15; }   /* 黄: 保存中 */
+  .rec-ind.saved  { background: #3b82f6; }   /* 青: 保存完了 */
+  .rec-ind.error  { background: #dc2626; }   /* 赤: エラー */
+
+  /* 入力 + ドットを横並びに配置（行ずれ防止） */
+  .field-input-wrap {
+    display: flex; align-items: center; gap: 6px;
+    width: 100%;
+  }
+  .record-fields-grid .field-input-wrap > input,
+  .record-fields-grid .field-input-wrap > select,
+  .record-fields-grid .field-input-wrap > .radio-group {
+    flex: 1; min-width: 0;
+  }
   .empty-records {
     text-align: center; padding: 24px; color: var(--muted); font-size: 13px;
   }
@@ -605,6 +626,17 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // 入力中はインジケータをグレーに戻す（青→グレー→保存時に黄→青）
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (!t.classList || !t.classList.contains('record-field')) return;
+    const lid = t.dataset.logId;
+    const field = t.dataset.field;
+    if (!lid || !field) return;
+    const ind = findInd(lid, field);
+    if (ind) ind.className = 'rec-ind';
+  });
+
   // タブレット: フォーム外のタップでアクティブ入力を blur（保存を確定 + 自動更新を再開）
   const blurOnOutsideTap = (e) => {
     const t = e.target;
@@ -742,13 +774,10 @@ function onProdEndChange() {
   }).catch(err => setSaveIndicator('end-save', 'error', err.message));
 }
 
-function setSaveIndicator(id, state, text) {
+function setSaveIndicator(id, state) {
   const el = document.getElementById(id);
-  el.className = 'save-indicator ' + state;
-  el.textContent = text;
-  if (state === 'saved') {
-    setTimeout(() => { el.textContent = ''; el.className = 'save-indicator'; }, 1800);
-  }
+  if (!el) return;
+  el.className = 'save-indicator' + (state ? ' ' + state : '');
 }
 
 // =====================================================
@@ -870,71 +899,87 @@ function renderRecordList() {
         <div class="record-fields-grid">
           <div>
             <div class="field-label">停止設備</div>
-            <input type="text" class="record-field" list="equipment-list"
-              data-log-id="${lid}" data-field="equipment"
-              placeholder="選択or入力"
-              value="${escapeAttr(r.equipment || '')}"
-              onblur="saveRecordField('${lid}', 'equipment', this.value)">
-            <span class="rec-ind" data-ind="${lid}-equipment"></span>
+            <div class="field-input-wrap">
+              <input type="text" class="record-field" list="equipment-list"
+                data-log-id="${lid}" data-field="equipment"
+                placeholder="選択or入力"
+                value="${escapeAttr(r.equipment || '')}"
+                onblur="saveRecordField('${lid}', 'equipment', this.value)">
+              <span class="rec-ind" data-ind="${lid}-equipment"></span>
+            </div>
           </div>
           <div>
             <div class="field-label">停止理由</div>
-            <input type="text" class="record-field" list="reason-list"
-              data-log-id="${lid}" data-field="reason"
-              placeholder="選択or入力"
-              value="${escapeAttr(r.reason || '')}"
-              onblur="saveRecordField('${lid}', 'reason', this.value)">
-            <span class="rec-ind" data-ind="${lid}-reason"></span>
+            <div class="field-input-wrap">
+              <input type="text" class="record-field" list="reason-list"
+                data-log-id="${lid}" data-field="reason"
+                placeholder="選択or入力"
+                value="${escapeAttr(r.reason || '')}"
+                onblur="saveRecordField('${lid}', 'reason', this.value)">
+              <span class="rec-ind" data-ind="${lid}-reason"></span>
+            </div>
           </div>
           <div>
             <div class="field-label">対応内容</div>
-            <input type="text" class="record-field" list="action-list"
-              data-log-id="${lid}" data-field="action"
-              placeholder="選択or入力"
-              value="${escapeAttr(r.action || '')}"
-              onblur="saveRecordField('${lid}', 'action', this.value)">
-            <span class="rec-ind" data-ind="${lid}-action"></span>
+            <div class="field-input-wrap">
+              <input type="text" class="record-field" list="action-list"
+                data-log-id="${lid}" data-field="action"
+                placeholder="選択or入力"
+                value="${escapeAttr(r.action || '')}"
+                onblur="saveRecordField('${lid}', 'action', this.value)">
+              <span class="rec-ind" data-ind="${lid}-action"></span>
+            </div>
           </div>
           <div>
             <div class="field-label">担当</div>
-            <input type="text" class="record-field"
-              data-log-id="${lid}" data-field="charge"
-              value="${escapeAttr(r.charge || '')}"
-              onblur="saveRecordField('${lid}', 'charge', this.value)">
-            <span class="rec-ind" data-ind="${lid}-charge"></span>
+            <div class="field-input-wrap">
+              <input type="text" class="record-field"
+                data-log-id="${lid}" data-field="charge"
+                value="${escapeAttr(r.charge || '')}"
+                onblur="saveRecordField('${lid}', 'charge', this.value)">
+              <span class="rec-ind" data-ind="${lid}-charge"></span>
+            </div>
           </div>
           <div>
             <div class="field-label">CR入室</div>
-            <div class="radio-group">
-              <div class="radio-option ${isCrYes ? 'selected' : ''}" data-value="有" onclick="selectRecordRadio(this, '${lid}')">有</div>
-              <div class="radio-option ${isCrNo ? 'selected' : ''}"  data-value="無" onclick="selectRecordRadio(this, '${lid}')">無</div>
-              <div class="radio-option ${isCrNone ? 'selected' : ''}" data-value="" onclick="selectRecordRadio(this, '${lid}')">—</div>
+            <div class="field-input-wrap">
+              <div class="radio-group">
+                <div class="radio-option ${isCrYes ? 'selected' : ''}" data-value="有" onclick="selectRecordRadio(this, '${lid}')">有</div>
+                <div class="radio-option ${isCrNo ? 'selected' : ''}"  data-value="無" onclick="selectRecordRadio(this, '${lid}')">無</div>
+                <div class="radio-option ${isCrNone ? 'selected' : ''}" data-value="" onclick="selectRecordRadio(this, '${lid}')">—</div>
+              </div>
+              <span class="rec-ind" data-ind="${lid}-crEntry"></span>
             </div>
-            <span class="rec-ind" data-ind="${lid}-crEntry"></span>
           </div>
           <div>
             <div class="field-label">廃棄本数</div>
-            <input type="number" class="record-field" min="0" placeholder="0"
-              data-log-id="${lid}" data-field="wastage"
-              value="${r.wastage || ''}"
-              onblur="saveRecordField('${lid}', 'wastage', this.value)">
-            <span class="rec-ind" data-ind="${lid}-wastage"></span>
+            <div class="field-input-wrap">
+              <input type="number" class="record-field" min="0" placeholder="0"
+                data-log-id="${lid}" data-field="wastage"
+                value="${r.wastage || ''}"
+                onblur="saveRecordField('${lid}', 'wastage', this.value)">
+              <span class="rec-ind" data-ind="${lid}-wastage"></span>
+            </div>
           </div>
           <div>
             <div class="field-label">UF温度</div>
-            <input type="number" class="record-field" step="0.1"
-              data-log-id="${lid}" data-field="ufTemp"
-              value="${r.ufTemp || ''}"
-              onblur="saveRecordField('${lid}', 'ufTemp', this.value)">
-            <span class="rec-ind" data-ind="${lid}-ufTemp"></span>
+            <div class="field-input-wrap">
+              <input type="number" class="record-field" step="0.1"
+                data-log-id="${lid}" data-field="ufTemp"
+                value="${r.ufTemp || ''}"
+                onblur="saveRecordField('${lid}', 'ufTemp', this.value)">
+              <span class="rec-ind" data-ind="${lid}-ufTemp"></span>
+            </div>
           </div>
           <div>
             <div class="field-label">TEA温度</div>
-            <input type="number" class="record-field" step="0.1"
-              data-log-id="${lid}" data-field="teaTemp"
-              value="${r.teaTemp || ''}"
-              onblur="saveRecordField('${lid}', 'teaTemp', this.value)">
-            <span class="rec-ind" data-ind="${lid}-teaTemp"></span>
+            <div class="field-input-wrap">
+              <input type="number" class="record-field" step="0.1"
+                data-log-id="${lid}" data-field="teaTemp"
+                value="${r.teaTemp || ''}"
+                onblur="saveRecordField('${lid}', 'teaTemp', this.value)">
+              <span class="rec-ind" data-ind="${lid}-teaTemp"></span>
+            </div>
           </div>
         </div>
       </div>`;
@@ -945,13 +990,9 @@ function findInd(logID, fieldKey) {
   return document.querySelector('[data-ind="' + logID + '-' + fieldKey + '"]');
 }
 
-function setRecInd(el, state, text) {
+function setRecInd(el, state) {
   if (!el) return;
-  el.className = 'rec-ind ' + state;
-  el.textContent = text;
-  if (state === 'saved') {
-    setTimeout(function() { el.textContent = ''; el.className = 'rec-ind'; }, 1500);
-  }
+  el.className = 'rec-ind' + (state ? ' ' + state : '');
 }
 
 function saveRecordField(logID, fieldKey, value) {
