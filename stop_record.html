@@ -86,8 +86,9 @@
 
   /* ── スティッキー上部バー（製造時間 + 停止記録の追加） ── */
   .top-bar-row {
-    display: flex; align-items: center;
-    gap: 10px 14px; flex-wrap: wrap;
+    display: flex; flex-direction: column;
+    align-items: center;
+    gap: 6px;
     padding: 6px 14px 8px;
     border-top: 1px solid var(--border);
   }
@@ -166,8 +167,7 @@
   .prod-time-line {
     display: flex; align-items: center; gap: 8px;
     flex-wrap: wrap; font-size: 16px;
-    flex: 1 1 auto;
-    min-width: 0;
+    justify-content: center;
   }
   .prod-section-title {
     font-size: 15px; font-weight: 700; color: var(--text);
@@ -866,8 +866,10 @@ function renderRecordList() {
     list.innerHTML = '<div class="empty-records">まだ停止記録はありません</div>';
     return;
   }
-  list.innerHTML = STATE.stopRecords.map((r, i) => {
-    const seq = i + 1;
+  // 新しい順（stopAt 降順）で表示。番号は logID 由来で安定
+  const records = STATE.stopRecords.slice().reverse();
+  list.innerHTML = records.map((r) => {
+    const seq = String(r.logID).split('-').pop();
     const stop = new Date(r.stopAt);
     const stopStr = hhmmFromDate(stop);
     const hasStart = !!r.startAt;
