@@ -84,6 +84,15 @@
     font-size: 10px; opacity: 0.8;
   }
 
+  /* ── 画面オフ防止ピル ── */
+  .wake-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 600; color: #92400e;
+    padding: 4px 10px; border-radius: 999px;
+    background: #fef3c7; border: 1px solid #fcd34d;
+    white-space: nowrap; flex-shrink: 0;
+  }
+
   /* ── セクション ── */
   main {
     max-width: 920px; margin: 0 auto; padding: 16px;
@@ -275,6 +284,7 @@
       <span class="skeleton" style="width: 60px;"></span>
       <span class="skeleton" style="width: 120px;"></span>
     </div>
+    <span class="wake-pill" id="wake-status" style="display: none;" title="画面オフ防止">🔒 画面オフ防止</span>
     <div class="conn-status" id="conn-status" title="自動更新の状態">
       <span class="conn-dot"></span>
       <span id="conn-text">接続中…</span>
@@ -454,6 +464,66 @@ function pollUpdate() {
   });
 }
 
+// =====================================================
+//  Wake Lock（画面オフ防止）— 1時間で自動解除
+// =====================================================
+const WAKE_LOCK_DURATION_MS = 60 * 60 * 1000;
+let wakeLock = null;
+let wakeLockDeadline = 0;
+
+function isWakeLockSupported() {
+  return 'wakeLock' in navigator;
+}
+
+async function acquireWakeLock() {
+  if (!isWakeLockSupported()) return;
+  if (Date.now() >= wakeLockDeadline) return;
+  if (wakeLock) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => {
+      wakeLock = null;
+      updateWakeUI();
+    });
+  } catch (e) {
+    // 端末側で拒否されても無視（既存機能はそのまま動く）
+  }
+  updateWakeUI();
+}
+
+function startWakeLock() {
+  if (!isWakeLockSupported()) {
+    // 非対応端末は何もしない（ピルも非表示のまま）
+    return;
+  }
+  wakeLockDeadline = Date.now() + WAKE_LOCK_DURATION_MS;
+  acquireWakeLock();
+  // 1時間後に解除
+  setTimeout(() => {
+    wakeLockDeadline = 0;
+    if (wakeLock) {
+      wakeLock.release().catch(() => {});
+      wakeLock = null;
+    }
+    updateWakeUI();
+  }, WAKE_LOCK_DURATION_MS);
+  // 残り時間表示を1分ごとに更新
+  setInterval(updateWakeUI, 60 * 1000);
+}
+
+function updateWakeUI() {
+  const el = document.getElementById('wake-status');
+  if (!el) return;
+  if (wakeLock && Date.now() < wakeLockDeadline) {
+    const remainMin = Math.ceil((wakeLockDeadline - Date.now()) / 60000);
+    el.style.display = '';
+    el.title = '画面オフ防止中（残り約' + remainMin + '分）';
+  } else {
+    el.style.display = 'none';
+    el.title = '';
+  }
+}
+
 // 入力中の値を壊さずに STATE と DOM を更新する
 function softMerge(detail) {
   STATE.cycle = detail.cycle;
@@ -508,13 +578,17 @@ window.addEventListener('DOMContentLoaded', () => {
     STATE.masters = res.masters || { equipment: [], reason: [], action: [] };
     renderAll();
     startAutoRefresh();
+    startWakeLock();
   }).catch(err => {
     document.body.innerHTML = `<div style="padding: 40px;">⚠ 取得失敗: ${err.message}</div>`;
   });
 
-  // 画面が表に戻ったら即時更新
+  // 画面が表に戻ったら即時更新 + WakeLock 再取得（1時間内なら）
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) pollUpdate();
+    if (!document.hidden) {
+      pollUpdate();
+      acquireWakeLock();
+    }
   });
 });
 
