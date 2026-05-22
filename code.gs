@@ -449,6 +449,76 @@ function api_updateStopRecordEnd(payload) {
 }
 
 /**
+ * 停止ログのストップ日時を更新する
+ * payload.stopAt: ISO datetime string (例: '2026-05-22T10:15:00')
+ * スタート日時が設定済みなら、その HH:MM を新ストップ日付ベースで再構築し
+ * 停止分数も再計算する
+ */
+function api_updateStopRecordStop(payload) {
+  const logID = payload.logID;
+  const stopAt = payload.stopAt;
+  if (!logID || !stopAt) {
+    return { success: false, error: 'logID, stopAt は必須です' };
+  }
+
+  const cycleID = _cycleFromLogID(logID);
+  if (!cycleID) return { success: false, error: 'logIDからの親特定失敗: ' + logID };
+  const year = _yearFromCycleID(cycleID);
+  if (!year) return { success: false, error: '年抽出失敗' };
+
+  const sheet = _getYearlySheet(CONFIG.SHEET_PREFIX_LOG + year);
+  if (!sheet) return { success: false, error: '停止ログシートがありません' };
+
+  const newStop = new Date(stopAt);
+  if (isNaN(newStop.getTime())) return { success: false, error: '無効な日時: ' + stopAt };
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    if (sheet.getLastRow() < 2) return { success: false, error: 'ログ行が見つかりません: ' + logID };
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, LOG_COLS.length).getValues();
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][0] === logID) {
+        const row = i + 2;
+        const oldMinutes = Number(data[i][LC['停止分数']]) || 0;
+        const startAt = data[i][LC['スタート日時']];
+
+        let newStartAt = '';
+        let newMinutes = 0;
+        if (startAt) {
+          const startDate = (startAt instanceof Date) ? startAt : new Date(startAt);
+          // スタートの HH:MM だけ保持し、新ストップ日付に置く
+          const candidate = new Date(newStop);
+          candidate.setHours(startDate.getHours(), startDate.getMinutes(), 0, 0);
+          if (candidate < newStop) candidate.setDate(candidate.getDate() + 1);
+          newStartAt = candidate;
+          newMinutes = Math.max(0, Math.round((candidate - newStop) / 60000));
+        }
+
+        sheet.getRange(row, LC['ストップ日時'] + 1).setValue(newStop);
+        if (startAt) sheet.getRange(row, LC['スタート日時'] + 1).setValue(newStartAt);
+        sheet.getRange(row, LC['停止分数']     + 1).setValue(newMinutes);
+
+        _updateParentCounts(cycleID, 0, newMinutes - oldMinutes);
+
+        return {
+          success: true,
+          logID: logID,
+          stopAt: newStop.toISOString(),
+          startAt: newStartAt instanceof Date ? newStartAt.toISOString() : '',
+          minutes: newMinutes
+        };
+      }
+    }
+    return { success: false, error: 'ログ行が見つかりません: ' + logID };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
  * 停止ログの任意フィールドを更新する（順次入力用）
  * payload.fields は { equipment, reason, action, charge, crEntry, wastage, ufTemp, teaTemp } の部分集合
  * スタート時刻は別API (api_updateStopRecordEnd) を使うこと

@@ -267,19 +267,24 @@
     padding-bottom: 5px; margin-bottom: 6px;
     border-bottom: 1px dashed var(--border);
   }
-  .record-seq {
-    font-size: 12px; font-weight: 700; color: var(--muted);
-    font-family: ui-monospace, monospace;
-    min-width: 26px;
-  }
-  .record-time-stop {
-    font-size: 15px; font-weight: 700;
-  }
   .record-header .arrow { color: var(--muted); font-size: 14px; }
-  .record-header .end-input {
-    width: 110px; min-width: 110px;     /* Safari 空欄時の縮みを防ぐ */
+  .record-header .end-input,
+  .record-header .rec-stop-time {
+    width: 100px; min-width: 100px;     /* Safari 空欄時の縮みを防ぐ */
     min-height: 30px; padding: 2px 6px;
     font-size: 14px; font-weight: 700; text-align: center;
+    border: 1px solid #d1d5db; border-radius: 5px;
+  }
+  .record-header .rec-stop-month,
+  .record-header .rec-stop-day {
+    font-size: 13px; font-weight: 700;
+    width: 50px; min-width: 50px;
+    min-height: 30px; padding: 2px 4px;
+    border: 1px solid #d1d5db; border-radius: 5px;
+    text-align: center;
+  }
+  .record-header .rec-stop-slash {
+    color: var(--muted); font-weight: 700;
   }
   .record-date {
     font-size: 13px; font-weight: 700; color: var(--muted);
@@ -866,12 +871,15 @@ function renderRecordList() {
     list.innerHTML = '<div class="empty-records">まだ停止記録はありません</div>';
     return;
   }
-  // 新しい順（stopAt 降順）で表示。番号は logID 由来で安定
+  // 新しい順（stopAt 降順）で表示
   const records = STATE.stopRecords.slice().reverse();
+  const monthOpts = range(1, 12).map(n => `<option value="${n}">${n}</option>`).join('');
+  const dayOpts   = range(1, 31).map(n => `<option value="${n}">${n}</option>`).join('');
   list.innerHTML = records.map((r) => {
-    const seq = String(r.logID).split('-').pop();
     const stop = new Date(r.stopAt);
     const stopStr = hhmmFromDate(stop);
+    const stopMonth = stop.getMonth() + 1;
+    const stopDay = stop.getDate();
     const hasStart = !!r.startAt;
     const startVal = hasStart ? hhmmFromDate(new Date(r.startAt)) : '';
     const minutesStr = hasStart ? (r.minutes || 0) + '分' : '—';
@@ -879,23 +887,30 @@ function renderRecordList() {
     const cr = r.crEntry || '無';   // 空なら 無 をデフォルトに
     const isCrYes = cr === '有';
     const isCrNo  = cr === '無';
-    const stopDateStr = mdFromDate(stop);
     const startDateStr = hasStart ? mdFromDate(new Date(r.startAt)) : '';
+    const stopDateStr = mdFromDate(stop);
     const showStartDate = hasStart && startDateStr !== stopDateStr;
+    const monthOptsSel = monthOpts.replace(`value="${stopMonth}"`, `value="${stopMonth}" selected`);
+    const dayOptsSel   = dayOpts.replace(`value="${stopDay}"`,     `value="${stopDay}" selected`);
     return `
       <div class="record-item ${hasStart ? '' : 'unfinished'}" data-log-id="${lid}">
         <div class="record-header">
-          <span class="record-seq">#${seq}</span>
-          <span class="record-date">${stopDateStr}</span>
-          <span class="record-time-stop">${stopStr}</span>
+          <select class="rec-stop-month record-field" data-log-id="${lid}" data-field="stopMonth" onchange="saveRecordStopAt('${lid}')">${monthOptsSel}</select>
+          <span class="rec-stop-slash">/</span>
+          <select class="rec-stop-day record-field" data-log-id="${lid}" data-field="stopDay" onchange="saveRecordStopAt('${lid}')">${dayOptsSel}</select>
+          <input type="time" class="rec-stop-time record-field"
+            data-log-id="${lid}" data-field="stopTime"
+            value="${stopStr}"
+            onchange="saveRecordStopAt('${lid}')">
+          <span class="rec-ind" data-ind="${lid}-stopAt"></span>
           <span class="arrow">→</span>
           ${showStartDate ? `<span class="record-date">${startDateStr}</span>` : ''}
           <input type="time" class="end-input record-field"
             data-log-id="${lid}" data-field="startTime"
             value="${startVal}"
             onchange="saveRecordField('${lid}', 'startTime', this.value)">
-          <span class="record-minutes ${hasStart ? '' : 'pending'}" data-min="${lid}">${minutesStr}</span>
           <span class="rec-ind" data-ind="${lid}-startTime"></span>
+          <span class="record-minutes ${hasStart ? '' : 'pending'}" data-min="${lid}">${minutesStr}</span>
         </div>
         <div class="record-fields-grid">
           <div>
@@ -1030,6 +1045,42 @@ function saveRecordField(logID, fieldKey, value) {
     const rec = STATE.stopRecords.find(function(r) { return r.logID === logID; });
     if (rec) rec[fieldKey] = trimmed;
   }).catch(function(err) { setRecInd(indEl, 'error', err.message); });
+}
+
+function saveRecordStopAt(logID) {
+  const card = document.querySelector('.record-item[data-log-id="' + logID + '"]');
+  if (!card) return;
+  const m = parseInt(card.querySelector('[data-field="stopMonth"]').value, 10);
+  const d = parseInt(card.querySelector('[data-field="stopDay"]').value, 10);
+  const t = card.querySelector('[data-field="stopTime"]').value;
+  const indEl = findInd(logID, 'stopAt');
+  if (!t) { setRecInd(indEl, 'error'); return; }
+  const yearStr = STATE.cycle.productionDate.slice(0, 4);
+  const test = new Date(parseInt(yearStr, 10), m - 1, d);
+  if (test.getMonth() !== m - 1) { setRecInd(indEl, 'error'); return; }
+  const stopIso = yearStr + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0') + 'T' + t + ':00';
+
+  setRecInd(indEl, 'saving');
+  gas('api_updateStopRecordStop', { logID: logID, stopAt: stopIso }).then(function(res) {
+    if (!res.success) { setRecInd(indEl, 'error'); return; }
+    setRecInd(indEl, 'saved');
+    const rec = STATE.stopRecords.find(function(r) { return r.logID === logID; });
+    if (rec) {
+      rec.stopAt = res.stopAt;
+      if (res.startAt) rec.startAt = res.startAt;
+      rec.minutes = res.minutes;
+    }
+    const minEl = document.querySelector('[data-min="' + logID + '"]');
+    if (minEl) {
+      if (rec && rec.startAt) {
+        minEl.textContent = (res.minutes || 0) + '分';
+        minEl.classList.remove('pending');
+      } else {
+        minEl.textContent = '—';
+        minEl.classList.add('pending');
+      }
+    }
+  }).catch(function(err) { setRecInd(indEl, 'error'); });
 }
 
 function selectRecordRadio(el, logID) {
