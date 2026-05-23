@@ -89,6 +89,57 @@
     display: flex; justify-content: center; gap: 8px;
   }
 
+  /* ── 確定ボタン / バッジ ── */
+  .confirm-area {
+    display: inline-flex; align-items: center; gap: 6px;
+    flex-shrink: 0;
+  }
+  .btn-confirm {
+    background: var(--accent); color: #fff; border: none;
+    padding: 8px 14px; border-radius: 6px;
+    font-size: 13px; font-weight: 700; cursor: pointer;
+    min-height: 34px; white-space: nowrap;
+  }
+  .btn-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
+  .confirm-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 12px; font-weight: 700;
+    padding: 4px 10px; border-radius: 999px;
+    background: #d1fae5; color: #065f46;
+    border: 1px solid #6ee7b7;
+    white-space: nowrap;
+  }
+  .btn-unconfirm {
+    background: var(--surface); color: var(--error); border: 1px solid var(--error);
+    padding: 4px 10px; border-radius: 6px;
+    font-size: 11px; font-weight: 700; cursor: pointer;
+  }
+  /* 読み取り専用バナー */
+  .readonly-banner {
+    background: #fef3c7; color: #92400e;
+    padding: 8px 14px; font-size: 13px; font-weight: 700;
+    text-align: center;
+    border-bottom: 1px solid #fcd34d;
+    position: sticky; top: 0; z-index: 9;
+  }
+  /* 読み取り専用モード時、入力系を半透明 + 操作不能に */
+  body.cycle-readonly input,
+  body.cycle-readonly select,
+  body.cycle-readonly textarea {
+    pointer-events: none;
+    background: #f9fafb !important;
+    color: #6b7280 !important;
+  }
+  body.cycle-readonly .radio-option,
+  body.cycle-readonly .btn-primary,
+  body.cycle-readonly .btn-add-small {
+    pointer-events: none;
+    opacity: 0.45;
+  }
+  body.cycle-readonly .add-bar-inline {
+    opacity: 0.7;
+  }
+
   /* ── 強制再取得ボタン ── */
   .refresh-btn {
     display: inline-flex; align-items: center; gap: 6px;
@@ -517,6 +568,7 @@
       <span class="conn-dot"></span>
       <span id="conn-text">接続中…</span>
     </div>
+    <div class="confirm-area" id="confirm-area"></div>
   </div>
   <div class="top-bar-row">
     <!-- 製造時間（左） -->
@@ -568,6 +620,11 @@
   <div class="error-text" id="stop-error" style="display: none; padding: 0 14px 6px;"></div>
 </header>
 
+<!-- 読み取り専用バナー（確定済 + 非リーダー時のみ表示） -->
+<div class="readonly-banner" id="readonly-banner" style="display: none;">
+  📌 この日報は確定済みです。編集にはリーダー権限が必要です。
+</div>
+
 <!-- datalist（ページ全体で共有） -->
 <datalist id="equipment-list"></datalist>
 <datalist id="reason-list"></datalist>
@@ -608,7 +665,9 @@ const STATE = {
   stopRecords: [],
   masters: null,
   products: [],
-  lastProducts: {}   // { '2L': 'P001', '500ml': 'P004' }
+  lastProducts: {},  // { '2L': 'P001', '500ml': 'P004' }
+  userEmail: '',
+  isLeader: false
 };
 
 // localStorage キャッシュ（マスタ・商品）
@@ -808,7 +867,10 @@ function softMerge(detail) {
 
   // 商品セレクタを更新（停止記録ごとの商品バッジは renderRecordList で更新）
   if (detail.lastProducts) STATE.lastProducts = detail.lastProducts;
+  if ('userEmail' in detail) STATE.userEmail = detail.userEmail || '';
+  if ('isLeader'  in detail) STATE.isLeader  = !!detail.isLeader;
   populateCycleProductSelect();
+  updateConfirmUI();
 }
 
 // =====================================================
@@ -841,6 +903,8 @@ window.addEventListener('DOMContentLoaded', () => {
       saveCachedProducts(STATE.products);
     }
     if (res.lastProducts) STATE.lastProducts = res.lastProducts;
+    STATE.userEmail = res.userEmail || '';
+    STATE.isLeader  = !!res.isLeader;
     renderAll();
     startAutoRefresh();
     startWakeLock();
@@ -903,6 +967,9 @@ function renderAll() {
 
   // 停止記録 追加フォームの初期化
   initStopForm();
+
+  // 確定UI（読み取り専用モード切替も含む）
+  updateConfirmUI();
 
   // 一覧描画
   renderRecordList();
@@ -1175,6 +1242,64 @@ function saveCycleProduct() {
     setSaveIndicator('cycle-product-save', 'saved');
     renderRecordList();
   }).catch(() => setSaveIndicator('cycle-product-save', 'error'));
+}
+
+// =====================================================
+//  日報確定 / 確定解除
+// =====================================================
+function updateConfirmUI() {
+  const c = STATE.cycle;
+  const area = document.getElementById('confirm-area');
+  const banner = document.getElementById('readonly-banner');
+  if (!c || !area) return;
+  const isConfirmed = !!c.confirmedAt;
+  const readonly = isConfirmed && !STATE.isLeader;
+
+  document.body.classList.toggle('cycle-readonly', readonly);
+  if (banner) banner.style.display = readonly ? '' : 'none';
+
+  if (!isConfirmed) {
+    area.innerHTML = '<button class="btn-confirm" onclick="confirmCycle()">日報を確定</button>';
+  } else {
+    const dt = new Date(c.confirmedAt);
+    const ds = (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + hhmmFromDate(dt);
+    const by = c.confirmedBy || '';
+    const badge = '<span class="confirm-badge" title="' + escapeAttr(by) + '">✓ 確定済 ' + ds + '</span>';
+    const unconfirmBtn = STATE.isLeader
+      ? '<button class="btn-unconfirm" onclick="unconfirmCycle()">解除</button>'
+      : '';
+    area.innerHTML = badge + unconfirmBtn;
+  }
+}
+
+function confirmCycle() {
+  if (!STATE.cycle) return;
+  if (!confirm('全フィールド入力済みなら日報を確定します。よろしいですか？')) return;
+  gas('api_confirmCycle', { cycleID: STATE.cycle.cycleID }).then(res => {
+    if (!res.success) {
+      const msg = res.validationErrors
+        ? '未入力があります:\n\n' + res.validationErrors.join('\n')
+        : (res.error || '確定失敗');
+      showModal(msg, '⚠');
+      return;
+    }
+    STATE.cycle.confirmedAt = res.confirmedAt;
+    STATE.cycle.confirmedBy = res.confirmedBy;
+    updateConfirmUI();
+    showModal('日報を確定しました。', '✓');
+  }).catch(err => showModal('通信エラー: ' + (err.message || err), '⚠'));
+}
+
+function unconfirmCycle() {
+  if (!STATE.cycle) return;
+  if (!STATE.isLeader) { showModal('リーダー権限がありません。', '⚠'); return; }
+  if (!confirm('日報の確定を解除します。よろしいですか？')) return;
+  gas('api_unconfirmCycle', { cycleID: STATE.cycle.cycleID }).then(res => {
+    if (!res.success) { showModal(res.error || '解除失敗', '⚠'); return; }
+    STATE.cycle.confirmedAt = '';
+    STATE.cycle.confirmedBy = '';
+    updateConfirmUI();
+  }).catch(err => showModal('通信エラー: ' + (err.message || err), '⚠'));
 }
 
 // =====================================================
