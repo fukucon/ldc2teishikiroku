@@ -70,6 +70,12 @@
   }
   .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
   .btn-export.busy::after { content: ' …'; }
+  .btn-export-csv {
+    background: #6b7280; color: #fff; border: none;
+    padding: 8px 18px; border-radius: 6px; font-size: 14px; font-weight: 700;
+    cursor: pointer; min-height: 36px;
+  }
+  .btn-export-csv:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* モーダル */
   .modal-overlay {
@@ -204,7 +210,8 @@
       <select id="ana-month"></select>
       <span>月</span>
       <button class="btn-primary" id="show-btn" onclick="loadAnalysis()">表示</button>
-      <button class="btn-export" id="export-btn" onclick="exportToSheet()" title="新規スプレッドシートに書き出し">スプシ出力</button>
+      <button class="btn-export-csv" id="csv-btn" onclick="exportToCsv()" disabled title="ブラウザにCSVをダウンロード（DBに触れない）">CSV出力</button>
+      <button class="btn-export" id="export-btn" onclick="exportToSheet()" title="新規スプレッドシートに書き出し（共有）">スプシ出力</button>
     </div>
   </div>
 
@@ -283,7 +290,10 @@ const APP_URL = '<?= appUrl ?>';
 const INITIAL_LINE = '<?= line ?>';
 const MAX_BAR_MIN = 100;     // 横軸の最大（分）
 
-let STATE = { line: INITIAL_LINE || '2L' };
+let STATE = {
+  line: INITIAL_LINE || '2L',
+  loaded: null   // 直近 loadAnalysis の結果（CSV出力で使う）
+};
 
 function gas(method, ...args) {
   return new Promise((resolve, reject) => {
@@ -335,12 +345,20 @@ function loadAnalysis() {
     .then(res => {
       if (!res || !res.success) {
         showError(res && res.error || '取得失敗');
+        STATE.loaded = null;
+        document.getElementById('csv-btn').disabled = true;
         return;
       }
+      STATE.loaded = res;
       renderCharts(res);
       renderTable(res);
+      document.getElementById('csv-btn').disabled = !res.records || !res.records.length;
     })
-    .catch(err => showError('通信エラー: ' + (err.message || err)))
+    .catch(err => {
+      showError('通信エラー: ' + (err.message || err));
+      STATE.loaded = null;
+      document.getElementById('csv-btn').disabled = true;
+    })
     .finally(() => { btn.disabled = false; });
 }
 
@@ -432,6 +450,56 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 function escapeAttr(s) { return escapeHtml(s); }
+
+// =====================================================
+//  CSV出力（フロント完結 / DriveやDBに一切触れない）
+// =====================================================
+function exportToCsv() {
+  const loaded = STATE.loaded;
+  if (!loaded || !loaded.records || !loaded.records.length) return;
+
+  const headers = ['月日', '商品', 'ストップ', 'スタート', '分', 'UF温度', 'TEA温度',
+                   '停止設備', '停止理由', '対応内容', 'CR入室', '廃棄本数', '担当'];
+  const rows = loaded.records.map(r => {
+    const sd = r.stopAt ? new Date(r.stopAt) : null;
+    const ed = r.startAt ? new Date(r.startAt) : null;
+    return [
+      sd ? (sd.getMonth()+1) + '/' + sd.getDate() : '',
+      r.productNickname || '',
+      sd ? pad(sd.getHours()) + ':' + pad(sd.getMinutes()) : '',
+      ed ? pad(ed.getHours()) + ':' + pad(ed.getMinutes()) : '',
+      r.minutes || 0,
+      r.ufTemp || '',
+      r.teaTemp || '',
+      r.equipment || '',
+      r.reason || '',
+      r.action || '',
+      r.crEntry || '',
+      r.wastage || 0,
+      r.charge || ''
+    ];
+  });
+  const csvBody = [headers, ...rows]
+    .map(row => row.map(csvEscape).join(','))
+    .join('\r\n');
+  // Excel が UTF-8 を認識できるよう BOM 付き
+  const blob = new Blob(['﻿' + csvBody], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const mm = String(loaded.month).padStart(2, '0');
+  const fileName = '停止記録一覧_' + loaded.line + '_' + loaded.year + '年' + mm + '月.csv';
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function csvEscape(value) {
+  const s = String(value == null ? '' : value);
+  if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
 
 // =====================================================
 //  スプシ出力
