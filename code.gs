@@ -67,7 +67,10 @@ const HEADER_COLS = [
   '最終更新',         // 12
   '製造開始日時',     // 13 Date / ISO
   '製造終了日時',     // 14 Date / ISO
-  '商品ID'           // 15 (NEW) サイクル開始時の商品（途中で 商品切替 ログがあればそちらが反映される）
+  '商品ID',          // 15 サイクル開始時の商品（商品切替stopがあればそちらが反映される）
+  '商品名',          // 16 商品マスターからのスナップショット
+  '商品種別',        // 17 同上 (2L / 500ml)
+  '商品通称'         // 18 同上
 ];
 
 // 列名→indexのマップ（HC.停止記録件数 のように使う）
@@ -91,7 +94,10 @@ const LOG_COLS = [
   'TEA温度',          // 12
   '記録部署',         // 13
   '記録日時',         // 14
-  '切替後商品ID'      // 15 (NEW) 停止設備に 商品切替 を含むときだけ入れる
+  '切替後商品ID',     // 15 停止設備に 商品切替 を含むときだけ使用
+  '切替後商品名',     // 16 商品マスターからのスナップショット
+  '切替後商品種別',   // 17 同上 (2L / 500ml)
+  '切替後商品通称'    // 18 同上
 ];
 const LC = {};
 LOG_COLS.forEach((n, i) => LC[n] = i);
@@ -250,7 +256,10 @@ function api_createCycle(payload) {
       now,
       '',           // 製造開始日時（未設定）
       '',           // 製造終了日時（未設定）
-      ''            // 商品ID（未設定）
+      '',           // 商品ID（未設定）
+      '',           // 商品名
+      '',           // 商品種別
+      ''            // 商品通称
     ]);
 
     return {
@@ -314,9 +323,18 @@ function api_updateCycleField(payload) {
     for (let i = 0; i < ids.length; i++) {
       if (ids[i][0] === cycleID) {
         const row = i + 2;
-        const storedValue = (value && (field === 'productionStartAt' || field === 'productionEndAt'))
-          ? new Date(value) : value;
-        sheet.getRange(row, HC[colName] + 1).setValue(storedValue);
+        if (field === 'productID') {
+          // productID 設定時はマスターを引いて 商品名/種別/通称 も同時保存
+          const p = _resolveProduct(value || '');
+          sheet.getRange(row, HC['商品ID']   + 1).setValue(p.id);
+          sheet.getRange(row, HC['商品名']   + 1).setValue(p.name);
+          sheet.getRange(row, HC['商品種別'] + 1).setValue(p.kind);
+          sheet.getRange(row, HC['商品通称'] + 1).setValue(p.nickname);
+        } else {
+          const storedValue = (value && (field === 'productionStartAt' || field === 'productionEndAt'))
+            ? new Date(value) : value;
+          sheet.getRange(row, HC[colName] + 1).setValue(storedValue);
+        }
         sheet.getRange(row, HC['最終更新'] + 1).setValue(new Date());
         return { success: true };
       }
@@ -384,7 +402,10 @@ function api_addStopRecord(payload) {
       teaTemp,
       recordDept,
       now,
-      ''           // 切替後商品ID（後から api_updateStopRecordFields で設定）
+      '',          // 切替後商品ID
+      '',          // 切替後商品名
+      '',          // 切替後商品種別
+      ''           // 切替後商品通称
     ]);
 
     // 親のキャッシュ列を更新
@@ -575,6 +596,15 @@ function api_updateStopRecordFields(payload) {
       if (ids[i][0] === logID) {
         const row = i + 2;
         Object.keys(fields).forEach(key => {
+          if (key === 'newProductID') {
+            // 商品ID指定時はマスターを引いて切替後の名/種別/通称も同時保存
+            const p = _resolveProduct(fields[key] || '');
+            sheet.getRange(row, LC['切替後商品ID']   + 1).setValue(p.id);
+            sheet.getRange(row, LC['切替後商品名']   + 1).setValue(p.name);
+            sheet.getRange(row, LC['切替後商品種別'] + 1).setValue(p.kind);
+            sheet.getRange(row, LC['切替後商品通称'] + 1).setValue(p.nickname);
+            return;
+          }
           const colName = fieldMap[key];
           if (!colName) return;
           let value = fields[key];
@@ -664,7 +694,10 @@ function _findCycle(cycleID) {
         lastUpdated: _toIso(r[12]),
         productionStartAt: _toIso(r[13]),
         productionEndAt: _toIso(r[14]),
-        productID: r[15] ? String(r[15]) : ''
+        productID: r[15] ? String(r[15]) : '',
+        productName: r[16] ? String(r[16]) : '',
+        productKind: r[17] ? String(r[17]) : '',
+        productNickname: r[18] ? String(r[18]) : ''
       };
     }
   }
@@ -698,7 +731,10 @@ function _getStopRecords(cycleID) {
       teaTemp: r[12],
       recordDept: r[13],
       recordedAt: _toIso(r[14]),
-      newProductID: r[15] ? String(r[15]) : ''
+      newProductID: r[15] ? String(r[15]) : '',
+      newProductName: r[16] ? String(r[16]) : '',
+      newProductKind: r[17] ? String(r[17]) : '',
+      newProductNickname: r[18] ? String(r[18]) : ''
     }))
     .sort((a, b) => (a.stopAt < b.stopAt ? -1 : a.stopAt > b.stopAt ? 1 : 0));
 }
@@ -887,7 +923,10 @@ function _getCycles(params) {
       lastUpdated: _toIso(r[12]),
       productionStartAt: _toIso(r[13]),
       productionEndAt: _toIso(r[14]),
-      productID: r[15] ? String(r[15]) : ''
+      productID: r[15] ? String(r[15]) : '',
+      productName: r[16] ? String(r[16]) : '',
+      productKind: r[17] ? String(r[17]) : '',
+      productNickname: r[18] ? String(r[18]) : ''
     })),
     hasMore: hasMore,
     nextBeforeDate: hasMore ? _toDateStr(page[page.length - 1][2]) : null
@@ -935,7 +974,7 @@ function _getDepartments() {
 
 /**
  * 商品マスター取得（共通マスタースプシの「商品マスター」シートから）
- *   A列: 商品ID, B列: 商品名, C列: 種別（2L / 500ml）
+ *   A列: 商品ID, B列: 商品名, C列: 種別（2L / 500ml）, D列: 商品通称
  */
 function _getProducts() {
   const cache = CacheService.getScriptCache();
@@ -947,14 +986,15 @@ function _getProducts() {
     const ss = _masterSS();
     const sheet = ss.getSheetByName(CONFIG.MASTER_PRODUCT);
     if (sheet && sheet.getLastRow() >= 2) {
-      const cols = Math.min(3, sheet.getLastColumn());
+      const cols = Math.min(4, sheet.getLastColumn());
       const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
       products = rows
         .filter(r => r[0])
         .map(r => ({
           id: String(r[0]),
           name: String(r[1] || r[0]),
-          kind: String(r[2] || '')
+          kind: String(r[2] || ''),
+          nickname: String(r[3] || r[1] || r[0])
         }));
     }
   } catch (e) {
@@ -963,6 +1003,16 @@ function _getProducts() {
 
   cache.put(CONFIG.CACHE_KEY_PRODUCT, JSON.stringify(products), CONFIG.CACHE_DURATION_SEC);
   return products;
+}
+
+/**
+ * 商品IDからマスタの全情報を引く（無ければデフォルト）
+ */
+function _resolveProduct(productID) {
+  if (!productID) return { id: '', name: '', kind: '', nickname: '' };
+  const products = _getProducts();
+  const p = products.find(x => x.id === productID);
+  return p || { id: productID, name: '', kind: '', nickname: '' };
 }
 
 /**
