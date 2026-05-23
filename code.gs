@@ -24,8 +24,9 @@ const CONFIG = {
   SHEET_ACTION:     '対応内容履歴',
 
   // 共通マスタースプシ内
-  MASTER_DEPT:  '部署マスタ',
-  MASTER_STAFF: '社員名簿',
+  MASTER_DEPT:    '部署マスタ',
+  MASTER_STAFF:   '社員名簿',
+  MASTER_PRODUCT: '商品マスター',
 
   // ラインマスタ（ハードコード）
   // key: 内部識別子、prefix: サイクルIDの接頭辞
@@ -41,7 +42,8 @@ const CONFIG = {
   // キャッシュ秒数
   CACHE_DURATION_SEC: 300,
   CACHE_KEY_DEPT:    'master_departments_v1',
-  CACHE_KEY_MASTERS: 'master_freelist_v1'
+  CACHE_KEY_MASTERS: 'master_freelist_v1',
+  CACHE_KEY_PRODUCT: 'master_products_v1'
 };
 
 // ─────────────────────────────────────
@@ -151,8 +153,16 @@ function api_initialLoad(line) {
       name: CONFIG.LINES[k].name
     })),
     departments: _getDepartments(),
+    products: _getProducts(),
     cycles: _getCycles({ year: year, line: line, limit: CONFIG.CYCLES_PER_PAGE })
   };
+}
+
+/**
+ * 商品マスター取得
+ */
+function api_getProducts() {
+  return _getProducts();
 }
 
 /**
@@ -265,7 +275,8 @@ function api_getCycleDetail(cycleID) {
     success: true,
     cycle: cycle,
     stopRecords: _getStopRecords(cycleID),
-    masters: _getMasters()
+    masters: _getMasters(),
+    products: _getProducts()
   };
 }
 
@@ -909,6 +920,34 @@ function _getDepartments() {
 
   cache.put(CONFIG.CACHE_KEY_DEPT, JSON.stringify(depts), CONFIG.CACHE_DURATION_SEC);
   return depts;
+}
+
+/**
+ * 商品マスター取得（共通マスタースプシの「商品マスター」シートから）
+ *   A列: 商品ID, B列: 商品名（1行目はヘッダー）
+ */
+function _getProducts() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(CONFIG.CACHE_KEY_PRODUCT);
+  if (cached) return JSON.parse(cached);
+
+  let products = [];
+  try {
+    const ss = _masterSS();
+    const sheet = ss.getSheetByName(CONFIG.MASTER_PRODUCT);
+    if (sheet && sheet.getLastRow() >= 2) {
+      const cols = Math.min(2, sheet.getLastColumn());
+      const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
+      products = rows
+        .filter(r => r[0])
+        .map(r => ({ id: String(r[0]), name: String(r[1] || r[0]) }));
+    }
+  } catch (e) {
+    Logger.log('_getProducts エラー: ' + e.message);
+  }
+
+  cache.put(CONFIG.CACHE_KEY_PRODUCT, JSON.stringify(products), CONFIG.CACHE_DURATION_SEC);
+  return products;
 }
 
 /**

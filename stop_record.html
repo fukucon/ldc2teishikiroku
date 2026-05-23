@@ -448,11 +448,13 @@ const CYCLE_ID = '<?= cycleID ?>';
 const STATE = {
   cycle: null,
   stopRecords: [],
-  masters: null
+  masters: null,
+  products: []
 };
 
-// localStorage キャッシュ（マスタ）
-const MASTERS_LS_KEY = 'cached_masters_v1';
+// localStorage キャッシュ（マスタ・商品）
+const MASTERS_LS_KEY  = 'cached_masters_v1';
+const PRODUCTS_LS_KEY = 'cached_products_v1';
 function loadCachedMasters() {
   try {
     const raw = localStorage.getItem(MASTERS_LS_KEY);
@@ -461,6 +463,15 @@ function loadCachedMasters() {
 }
 function saveCachedMasters(masters) {
   try { localStorage.setItem(MASTERS_LS_KEY, JSON.stringify(masters)); } catch (e) {}
+}
+function loadCachedProducts() {
+  try {
+    const raw = localStorage.getItem(PRODUCTS_LS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) { return []; }
+}
+function saveCachedProducts(products) {
+  try { localStorage.setItem(PRODUCTS_LS_KEY, JSON.stringify(products)); } catch (e) {}
 }
 
 function gas(method, ...args) {
@@ -557,6 +568,10 @@ function softMerge(detail) {
   STATE.cycle = detail.cycle;
   STATE.masters = detail.masters || STATE.masters || { equipment: [], reason: [], action: [] };
   if (detail.masters) saveCachedMasters(STATE.masters);
+  if (detail.products) {
+    STATE.products = detail.products;
+    saveCachedProducts(STATE.products);
+  }
 
   // datalist は別要素なので安全に差し替え可能
   fillDatalist('equipment-list', STATE.masters.equipment);
@@ -606,6 +621,7 @@ window.addEventListener('DOMContentLoaded', () => {
     fillDatalist('reason-list',    cachedMasters.reason    || []);
     fillDatalist('action-list',    cachedMasters.action    || []);
   }
+  STATE.products = loadCachedProducts();
 
   gas('api_getCycleDetail', CYCLE_ID).then(res => {
     if (!res.success) {
@@ -616,6 +632,10 @@ window.addEventListener('DOMContentLoaded', () => {
     STATE.stopRecords = res.stopRecords || [];
     STATE.masters = res.masters || { equipment: [], reason: [], action: [] };
     saveCachedMasters(STATE.masters);
+    if (res.products) {
+      STATE.products = res.products;
+      saveCachedProducts(STATE.products);
+    }
     renderAll();
     startAutoRefresh();
     startWakeLock();

@@ -489,6 +489,10 @@ window.addEventListener('DOMContentLoaded', () => {
       STATE.lineOptions = data.lines || [];
       buildLineRadios(STATE.lineOptions);
       STATE.cycleCache['2L'] = data.cycles;
+      // 商品マスターを localStorage にキャッシュ（次回オープン即時利用）
+      if (data.products) {
+        try { localStorage.setItem('cached_products_v1', JSON.stringify(data.products)); } catch (e) {}
+      }
       renderCycles('2L');
       // 部署未選択ならモーダル
       if (!STATE.department) setTimeout(showDeptModal, 200);
