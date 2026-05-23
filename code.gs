@@ -1173,51 +1173,21 @@ function api_exportAnalysisToSheet(payload) {
   try {
     const dateTag = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HH-mm');
     const mm = String(data.month).padStart(2, '0');
-    const name = '停止記録分析_' + data.line + '_' + data.year + '年' + mm + '月_' + dateTag;
+    const name = '停止記録一覧_' + data.line + '_' + data.year + '年' + mm + '月_' + dateTag;
     const ss = SpreadsheetApp.create(name);
 
-    // メタ情報
-    const meta = ss.getActiveSheet();
-    meta.setName('メタ情報');
-    meta.getRange(1, 1, 5, 2).setValues([
-      ['ライン',      data.line],
-      ['対象年月',    data.year + '年' + data.month + '月'],
-      ['比較対象',    data.prevYear + '年' + data.prevMonth + '月'],
-      ['出力日時',    new Date()],
-      ['総停止件数',  (data.records || []).length]
-    ]);
-    meta.getRange(1, 1, 5, 1).setFontWeight('bold').setBackground('#f1f3f4');
-
-    // 停止設備集計
-    const eq = ss.insertSheet('停止設備別集計');
-    eq.getRange(1, 1, 1, 3).setValues([['停止設備', '今月(分)', '前月(分)']])
-      .setFontWeight('bold').setBackground('#f1f3f4');
-    if ((data.equipmentChart || []).length) {
-      eq.getRange(2, 1, data.equipmentChart.length, 3).setValues(
-        data.equipmentChart.map(it => [it.name, it.current, it.previous])
-      );
-    }
-    eq.setFrozenRows(1);
-
-    // 停止理由集計
-    const rs = ss.insertSheet('停止理由別集計');
-    rs.getRange(1, 1, 1, 3).setValues([['停止理由', '今月(分)', '前月(分)']])
-      .setFontWeight('bold').setBackground('#f1f3f4');
-    if ((data.reasonChart || []).length) {
-      rs.getRange(2, 1, data.reasonChart.length, 3).setValues(
-        data.reasonChart.map(it => [it.name, it.current, it.previous])
-      );
-    }
-    rs.setFrozenRows(1);
-
-    // 月内全停止記録
-    const rc = ss.insertSheet('月内全停止記録');
-    rc.getRange(1, 1, 1, 13).setValues([[
+    // 1シート完結: 分析画面下部の一覧と同じ13列
+    const sheet = ss.getActiveSheet();
+    sheet.setName(data.year + '年' + mm + '月');
+    sheet.getRange(1, 1, 1, 13).setValues([[
       '月日', '商品', 'ストップ', 'スタート', '分', 'UF温度', 'TEA温度',
       '停止設備', '停止理由', '対応内容', 'CR入室', '廃棄本数', '担当'
     ]]).setFontWeight('bold').setBackground('#f1f3f4');
-    if ((data.records || []).length) {
-      const rows = data.records.map(r => {
+    sheet.setFrozenRows(1);
+
+    const records = data.records || [];
+    if (records.length) {
+      const rows = records.map(r => {
         const sd = r.stopAt ? new Date(r.stopAt) : null;
         const ed = r.startAt ? new Date(r.startAt) : null;
         return [
@@ -1236,11 +1206,9 @@ function api_exportAnalysisToSheet(payload) {
           r.charge || ''
         ];
       });
-      rc.getRange(2, 1, rows.length, 13).setValues(rows);
+      sheet.getRange(2, 1, rows.length, 13).setValues(rows);
     }
-    rc.setFrozenRows(1);
-
-    // 不要なシートを削除（最初のメタ情報以外、デフォルトの「シート1」が残らないように insertSheet で対応済み）
+    sheet.autoResizeColumns(1, 13);
 
     // EXPORT_FOLDER_ID が設定されていれば指定フォルダに移動
     if (CONFIG.EXPORT_FOLDER_ID) {
@@ -1253,11 +1221,25 @@ function api_exportAnalysisToSheet(payload) {
       }
     }
 
+    // ログインユーザーにエディター権限を付与（「共有アイテム」から見える）
+    let sharedWith = '';
+    try {
+      const userEmail = Session.getActiveUser().getEmail();
+      if (userEmail) {
+        DriveApp.getFileById(ss.getId()).addEditor(userEmail);
+        sharedWith = userEmail;
+      }
+    } catch (e) {
+      Logger.log('共有失敗: ' + e.message);
+    }
+
     return {
       success: true,
       url: ss.getUrl(),
       fileId: ss.getId(),
-      fileName: name
+      fileName: name,
+      recordCount: records.length,
+      sharedWith: sharedWith
     };
   } catch (e) {
     return { success: false, error: e.message };

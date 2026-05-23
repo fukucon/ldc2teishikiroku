@@ -455,11 +455,13 @@ function exportToSheet() {
         );
         return;
       }
-      showModal(
-        '✓',
-        'スプシ出力が完了しました。\nファイル名: ' + res.fileName,
-        res.url
-      );
+      const lines = [
+        'スプシ出力が完了しました。',
+        '件数: ' + (res.recordCount || 0) + '件',
+        'ファイル名: ' + res.fileName
+      ];
+      if (res.sharedWith) lines.push('共有先: ' + res.sharedWith);
+      showModal('✓', lines.join('\n'), res.url);
     })
     .catch(err => {
       showModal('⚠', '通信エラー: ' + (err.message || err), '');
