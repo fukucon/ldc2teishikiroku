@@ -60,6 +60,35 @@
     font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace;
   }
 
+  /* ── 汎用モーダル ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal-dialog {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 24px 20px 20px;
+    max-width: 360px; width: 100%;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+  }
+  .modal-icon {
+    text-align: center; font-size: 36px; margin-bottom: 8px;
+  }
+  .modal-message {
+    font-size: 15px; line-height: 1.6;
+    margin-bottom: 18px;
+    text-align: center; color: var(--text);
+    white-space: pre-wrap;
+  }
+  .modal-actions {
+    display: flex; justify-content: center; gap: 8px;
+  }
+
   /* ── 強制再取得ボタン ── */
   .refresh-btn {
     display: inline-flex; align-items: center; justify-content: center;
@@ -547,6 +576,17 @@
   <span id="sync-time" style="font-size: 11px;"></span>
 </div>
 
+<!-- 汎用モーダル -->
+<div class="modal-overlay hidden" id="modal-overlay" onclick="onModalOverlayClick(event)">
+  <div class="modal-dialog">
+    <div class="modal-icon" id="modal-icon">⚠</div>
+    <div class="modal-message" id="modal-message"></div>
+    <div class="modal-actions">
+      <button class="btn-primary" onclick="hideModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const APP_URL = '<?= appUrl ?>';
 const CYCLE_ID = '<?= cycleID ?>';
@@ -640,14 +680,35 @@ function manualRefresh() {
   if (!btn || btn.disabled) return;
   btn.disabled = true;
   btn.classList.add('refreshing');
+  let failed = false;
   gas('api_invalidateCaches')
     .then(() => gas('api_getCycleDetail', CYCLE_ID))
-    .then(res => { if (res && res.success) softMerge(res); })
-    .catch(() => { /* setOnlineStatus(false) は gas() 内で実行 */ })
+    .then(res => {
+      if (res && res.success) softMerge(res);
+      else failed = true;
+    })
+    .catch(() => { failed = true; })
     .finally(() => {
       btn.disabled = false;
       btn.classList.remove('refreshing');
+      if (failed) {
+        showModal('通信状態が不安定なため、時間をおいて更新ボタンを押してください。', '⚠');
+      }
     });
+}
+
+// 汎用モーダル
+function showModal(message, icon) {
+  const overlay = document.getElementById('modal-overlay');
+  document.getElementById('modal-message').textContent = message || '';
+  document.getElementById('modal-icon').textContent = icon || '';
+  overlay.classList.remove('hidden');
+}
+function hideModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+function onModalOverlayClick(e) {
+  if (e.target.id === 'modal-overlay') hideModal();
 }
 
 // =====================================================
