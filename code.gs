@@ -124,10 +124,13 @@ const MASTER_FREE_COLS = ['内容', '使用回数', '初回追加日時', '最�
 
 function doGet(e) {
   const params = (e && e.parameter) || {};
-  const page = params.cycle ? 'stop_record' : 'index';
+  let page = 'index';
+  if (params.cycle) page = 'stop_record';
+  else if (params.page === 'analysis') page = 'analysis';
   const t = HtmlService.createTemplateFromFile(page);
   t.appUrl = ScriptApp.getService().getUrl();
   t.cycleID = params.cycle || '';
+  t.line = params.line || '2L';
   return t.evaluate()
     .setTitle('充填停止記録')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
@@ -1031,6 +1034,127 @@ function _getLastProducts() {
 function _setLastProduct(line, productID) {
   if (!line) return;
   PropertiesService.getScriptProperties().setProperty('last_product_' + line, productID || '');
+}
+
+/**
+ * 分析ページ用のデータを返す
+ * payload: { line, year, month }
+ *  - 指定ラインの指定年月の全停止ログ
+ *  - 停止設備別 / 停止理由別 の集計（今月 + 前月）
+ *  - 各ログの「その時点の商品通称」も付与
+ */
+function api_getAnalysis(payload) {
+  payload = payload || {};
+  const line = payload.line || '2L';
+  const year = parseInt(payload.year, 10);
+  const month = parseInt(payload.month, 10);
+  if (!CONFIG.LINES[line]) return { success: false, error: '不正なライン' };
+  if (!year || !month || month < 1 || month > 12) return { success: false, error: '不正な年月' };
+
+  let prevYear = year, prevMonth = month - 1;
+  if (prevMonth < 1) { prevMonth = 12; prevYear = year - 1; }
+
+  const linePrefix = CONFIG.LINES[line].prefix;
+  const years = (year === prevYear) ? [year] : [year, prevYear];
+
+  // 該当する全ログを読み込み（cycleID 接頭辞でライン判定）
+  const logsRaw = [];
+  years.forEach(y => {
+    const sheet = _getYearlySheet(CONFIG.SHEET_PREFIX_LOG + y);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, LOG_COLS.length).getValues();
+    data.forEach(r => {
+      const cycleID = String(r[LC['親サイクルID']]);
+      if (cycleID.charAt(0) !== linePrefix) return;
+      const stopAt = r[LC['ストップ日時']];
+      if (!(stopAt instanceof Date)) return;
+      logsRaw.push({
+        cycleID: cycleID,
+        stopAt: stopAt,
+        startAt: r[LC['スタート日時']],
+        minutes: Number(r[LC['停止分数']]) || 0,
+        equipment: String(r[LC['停止設備']] || ''),
+        reason:    String(r[LC['停止理由']] || ''),
+        action:    String(r[LC['対応内容']] || ''),
+        charge:    String(r[LC['担当']] || ''),
+        crEntry:   String(r[LC['CR入室']] || ''),
+        wastage:   Number(r[LC['廃棄本数']]) || 0,
+        ufTemp:    String(r[LC['UF温度']] || ''),
+        teaTemp:   String(r[LC['TEA温度']] || ''),
+        newProductNickname: String(r[LC['切替後商品通称']] || '')
+      });
+    });
+  });
+
+  // サイクル開始時の商品通称（後で switch で上書きする）
+  const cycleStartNickname = {};
+  years.forEach(y => {
+    const sheet = _getYearlySheet(CONFIG.SHEET_PREFIX_HEADER + y);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, HEADER_COLS.length).getValues();
+    data.forEach(r => {
+      cycleStartNickname[r[0]] = String(r[HC['商品通称']] || '');
+    });
+  });
+
+  // 各 stop に「その時点の商品通称」を付与（cycle内で時刻昇順 + switch順次適用）
+  const byCycle = {};
+  logsRaw.forEach(l => {
+    if (!byCycle[l.cycleID]) byCycle[l.cycleID] = [];
+    byCycle[l.cycleID].push(l);
+  });
+  Object.keys(byCycle).forEach(cid => {
+    byCycle[cid].sort((a, b) => a.stopAt - b.stopAt);
+    let cur = cycleStartNickname[cid] || '';
+    byCycle[cid].forEach(l => {
+      if (l.newProductNickname) cur = l.newProductNickname;
+      l.productNickname = cur;
+    });
+  });
+
+  const inMonth = (d, y, m) => d.getFullYear() === y && (d.getMonth() + 1) === m;
+  const curLogs = logsRaw.filter(l => inMonth(l.stopAt, year, month));
+  const prvLogs = logsRaw.filter(l => inMonth(l.stopAt, prevYear, prevMonth));
+
+  const aggregate = (logs, key) => {
+    const m = {};
+    logs.forEach(l => {
+      const k = l[key] || '(未設定)';
+      m[k] = (m[k] || 0) + (l.minutes || 0);
+    });
+    return m;
+  };
+  const build = (current, previous) => {
+    const keys = {};
+    Object.keys(current).forEach(k => keys[k] = true);
+    Object.keys(previous).forEach(k => keys[k] = true);
+    return Object.keys(keys)
+      .map(k => ({ name: k, current: current[k] || 0, previous: previous[k] || 0 }))
+      .filter(x => x.current > 0 || x.previous > 0)
+      .sort((a, b) => b.current - a.current);
+  };
+
+  return {
+    success: true,
+    line: line, year: year, month: month,
+    prevYear: prevYear, prevMonth: prevMonth,
+    equipmentChart: build(aggregate(curLogs, 'equipment'), aggregate(prvLogs, 'equipment')),
+    reasonChart:    build(aggregate(curLogs, 'reason'),    aggregate(prvLogs, 'reason')),
+    records: curLogs.map(l => ({
+      stopAt: _toIso(l.stopAt),
+      startAt: _toIso(l.startAt),
+      minutes: l.minutes,
+      equipment: l.equipment,
+      reason: l.reason,
+      action: l.action,
+      charge: l.charge,
+      crEntry: l.crEntry,
+      wastage: l.wastage,
+      ufTemp: l.ufTemp,
+      teaTemp: l.teaTemp,
+      productNickname: l.productNickname
+    })).sort((a, b) => a.stopAt < b.stopAt ? -1 : 1)
+  };
 }
 
 /**

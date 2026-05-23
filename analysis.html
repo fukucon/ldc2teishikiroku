@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>分析ページ - 充填停止記録</title>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --surface: #ffffff;
+    --border: #e1e4e8;
+    --text: #1f2328;
+    --muted: #6e7781;
+    --accent: #2563eb;
+    --accent-bg: #eff6ff;
+    --line-2L: #6366f1;
+    --line-500ml: #f97316;
+    --success: #16a34a;
+    --warn: #f59e0b;
+    --error: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  header h1 { margin: 0; font-size: 18px; font-weight: 800; }
+  .back-link {
+    color: var(--accent); text-decoration: none; font-size: 14px; font-weight: 700;
+  }
+  main { padding: 14px; max-width: 1280px; margin: 0 auto; }
+
+  .controls {
+    background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 14px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  }
+  .line-tabs { display: inline-flex; gap: 4px; }
+  .tab-btn {
+    border: 1px solid var(--border); background: var(--surface);
+    padding: 8px 16px; border-radius: 999px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    color: var(--muted);
+  }
+  .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .period-picker { display: inline-flex; align-items: center; gap: 6px; }
+  .period-picker select {
+    padding: 6px 10px; min-height: 36px;
+    border: 1px solid var(--border); border-radius: 6px;
+    font-size: 14px; font-weight: 700; background: var(--surface);
+  }
+  .period-picker span { font-size: 14px; font-weight: 600; color: var(--muted); }
+  .btn-primary {
+    background: var(--accent); color: #fff; border: none;
+    padding: 8px 18px; border-radius: 6px; font-size: 14px; font-weight: 700;
+    cursor: pointer; min-height: 36px;
+  }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; margin-bottom: 14px;
+  }
+  .section-title {
+    font-size: 15px; font-weight: 800; margin: 0 0 10px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .legend {
+    display: inline-flex; align-items: center; gap: 14px;
+    font-size: 12px; font-weight: 600; color: var(--muted);
+    flex-wrap: wrap;
+  }
+  .legend .dot {
+    display: inline-block; width: 12px; height: 12px; border-radius: 2px;
+    vertical-align: middle; margin-right: 4px;
+  }
+  .legend .dot.current  { background: var(--accent); }
+  .legend .dot.previous { background: #93c5fd; }
+  .scale-note { color: var(--muted); }
+
+  .chart { display: flex; flex-direction: column; gap: 8px; }
+  .chart-row {
+    display: grid; grid-template-columns: 140px 1fr;
+    gap: 10px; align-items: center;
+  }
+  .chart-label {
+    font-size: 13px; font-weight: 700;
+    text-align: right;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chart-bars { display: flex; flex-direction: column; gap: 3px; }
+  .chart-bar {
+    display: flex; align-items: center; gap: 6px;
+    height: 18px; position: relative;
+  }
+  .chart-bar-track {
+    flex: 1; height: 100%; min-width: 0;
+    background: #f3f4f6; border-radius: 3px; position: relative; overflow: hidden;
+  }
+  .chart-bar-fill {
+    height: 100%; border-radius: 3px;
+    transition: width 0.4s ease;
+  }
+  .chart-bar-fill.current  { background: var(--accent); }
+  .chart-bar-fill.previous { background: #93c5fd; }
+  .chart-bar-fill.over { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+  .chart-bar-value {
+    font-size: 11px; font-weight: 700; min-width: 56px;
+    color: var(--text);
+  }
+  .chart-bar-value.over { color: var(--error); }
+  .chart-empty {
+    text-align: center; padding: 22px; color: var(--muted); font-size: 13px;
+  }
+
+  /* レコード一覧テーブル */
+  .table-wrap { overflow-x: auto; }
+  table.records-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 12px;
+  }
+  .records-table th, .records-table td {
+    padding: 6px 8px; border-bottom: 1px solid var(--border);
+    text-align: left; white-space: nowrap;
+  }
+  .records-table th {
+    position: sticky; top: 0; background: #f1f3f4;
+    font-weight: 700; font-size: 11px; color: var(--muted);
+  }
+  .records-table tr:hover { background: #fafbfc; }
+  .records-table .col-min { text-align: right; font-weight: 700; }
+  .records-table .col-product {
+    color: var(--accent); font-weight: 700;
+  }
+
+  .skeleton {
+    background: linear-gradient(90deg, #eef0f3 0%, #f7f8fa 50%, #eef0f3 100%);
+    background-size: 200% 100%; animation: shimmer 1.4s ease-in-out infinite;
+    border-radius: 4px; height: 18px;
+  }
+  @keyframes shimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+  }
+
+  @media (max-width: 700px) {
+    .chart-row { grid-template-columns: 100px 1fr; }
+    .chart-bar-value { min-width: 46px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="back-link" href="<?= appUrl ?>">← 一覧</a>
+  <h1>分析ページ</h1>
+</header>
+
+<main>
+  <div class="controls">
+    <div class="line-tabs">
+      <button class="tab-btn" id="tab-2L"    onclick="switchLine('2L')">2L</button>
+      <button class="tab-btn" id="tab-500ml" onclick="switchLine('500ml')">500ml</button>
+    </div>
+    <div class="period-picker">
+      <select id="ana-year"></select>
+      <span>年</span>
+      <select id="ana-month"></select>
+      <span>月</span>
+      <button class="btn-primary" id="show-btn" onclick="loadAnalysis()">表示</button>
+    </div>
+  </div>
+
+  <section class="section">
+    <div class="section-title">
+      停止設備別 停止時間
+      <span class="legend">
+        <span><span class="dot current"></span> 今月</span>
+        <span><span class="dot previous"></span> 前月</span>
+        <span class="scale-note">横軸最大 100分（超過は ▶）</span>
+      </span>
+    </div>
+    <div class="chart" id="chart-equipment">
+      <div class="chart-empty">表示ボタンを押してください</div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title">
+      停止理由別 停止時間
+      <span class="legend">
+        <span><span class="dot current"></span> 今月</span>
+        <span><span class="dot previous"></span> 前月</span>
+      </span>
+    </div>
+    <div class="chart" id="chart-reason">
+      <div class="chart-empty">表示ボタンを押してください</div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title">
+      月内 全停止記録
+      <span class="legend">
+        <span id="records-count" class="scale-note">—</span>
+      </span>
+    </div>
+    <div class="table-wrap">
+      <table class="records-table">
+        <thead>
+          <tr>
+            <th>月日</th>
+            <th>商品</th>
+            <th>ストップ</th>
+            <th>スタート</th>
+            <th>分</th>
+            <th>UF</th>
+            <th>TEA</th>
+            <th>停止設備</th>
+            <th>停止理由</th>
+            <th>対応内容</th>
+            <th>CR</th>
+            <th>廃棄</th>
+            <th>担当</th>
+          </tr>
+        </thead>
+        <tbody id="records-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const APP_URL = '<?= appUrl ?>';
+const INITIAL_LINE = '<?= line ?>';
+const MAX_BAR_MIN = 100;     // 横軸の最大（分）
+
+let STATE = { line: INITIAL_LINE || '2L' };
+
+function gas(method, ...args) {
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(reject)
+      [method](...args);
+  });
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  // 年セレクタ: ±2年
+  const ySel = document.getElementById('ana-year');
+  for (let yy = y - 2; yy <= y + 1; yy++) {
+    ySel.innerHTML += `<option value="${yy}"${yy === y ? ' selected' : ''}>${yy}</option>`;
+  }
+  // 月セレクタ: 1-12
+  const mSel = document.getElementById('ana-month');
+  for (let mm = 1; mm <= 12; mm++) {
+    mSel.innerHTML += `<option value="${mm}"${mm === m ? ' selected' : ''}>${mm}</option>`;
+  }
+  updateLineTabs();
+});
+
+function switchLine(line) {
+  STATE.line = line;
+  updateLineTabs();
+}
+function updateLineTabs() {
+  ['2L', '500ml'].forEach(l => {
+    const el = document.getElementById('tab-' + l);
+    if (el) el.classList.toggle('active', l === STATE.line);
+  });
+}
+
+function loadAnalysis() {
+  const btn = document.getElementById('show-btn');
+  const year  = parseInt(document.getElementById('ana-year').value, 10);
+  const month = parseInt(document.getElementById('ana-month').value, 10);
+  if (!year || !month) return;
+
+  btn.disabled = true;
+  setLoadingState();
+
+  gas('api_getAnalysis', { line: STATE.line, year: year, month: month })
+    .then(res => {
+      if (!res || !res.success) {
+        showError(res && res.error || '取得失敗');
+        return;
+      }
+      renderCharts(res);
+      renderTable(res);
+    })
+    .catch(err => showError('通信エラー: ' + (err.message || err)))
+    .finally(() => { btn.disabled = false; });
+}
+
+function setLoadingState() {
+  ['chart-equipment', 'chart-reason'].forEach(id => {
+    document.getElementById(id).innerHTML =
+      Array(3).fill(0).map(() => '<div class="chart-row"><div class="skeleton" style="width: 80%;"></div><div class="skeleton"></div></div>').join('');
+  });
+  document.getElementById('records-tbody').innerHTML = '';
+  document.getElementById('records-count').textContent = '読み込み中…';
+}
+
+function showError(msg) {
+  ['chart-equipment', 'chart-reason'].forEach(id => {
+    document.getElementById(id).innerHTML = `<div class="chart-empty" style="color: var(--error);">⚠ ${escapeHtml(msg)}</div>`;
+  });
+}
+
+function renderCharts(res) {
+  renderChart('chart-equipment', res.equipmentChart);
+  renderChart('chart-reason',    res.reasonChart);
+}
+
+function renderChart(elID, items) {
+  const el = document.getElementById(elID);
+  if (!items || !items.length) {
+    el.innerHTML = '<div class="chart-empty">該当データがありません</div>';
+    return;
+  }
+  el.innerHTML = items.map(it => {
+    return `<div class="chart-row">
+      <div class="chart-label" title="${escapeAttr(it.name)}">${escapeHtml(it.name)}</div>
+      <div class="chart-bars">
+        ${barHtml('current',  it.current)}
+        ${barHtml('previous', it.previous)}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function barHtml(kind, minutes) {
+  const over = minutes > MAX_BAR_MIN;
+  const widthPct = Math.min(100, (minutes / MAX_BAR_MIN) * 100);
+  const overTag = over ? '<span class="chart-bar-value over"> ▶</span>' : '';
+  return `<div class="chart-bar">
+    <div class="chart-bar-track">
+      <div class="chart-bar-fill ${kind} ${over ? 'over' : ''}" style="width: ${widthPct}%;"></div>
+    </div>
+    <span class="chart-bar-value ${over ? 'over' : ''}">${minutes}分${over ? ' ▶' : ''}</span>
+  </div>`;
+}
+
+function renderTable(res) {
+  const tbody = document.getElementById('records-tbody');
+  const records = res.records || [];
+  document.getElementById('records-count').textContent = `${records.length}件 / 合計 ${sum(records, 'minutes')}分`;
+  if (!records.length) {
+    tbody.innerHTML = '<tr><td colspan="13" style="text-align: center; color: var(--muted); padding: 20px;">該当データがありません</td></tr>';
+    return;
+  }
+  tbody.innerHTML = records.map(r => {
+    const sd = r.stopAt ? new Date(r.stopAt) : null;
+    const ed = r.startAt ? new Date(r.startAt) : null;
+    return `<tr>
+      <td>${sd ? (sd.getMonth()+1) + '/' + sd.getDate() : '—'}</td>
+      <td class="col-product">${escapeHtml(r.productNickname || '')}</td>
+      <td>${sd ? pad(sd.getHours()) + ':' + pad(sd.getMinutes()) : '—'}</td>
+      <td>${ed ? pad(ed.getHours()) + ':' + pad(ed.getMinutes()) : '—'}</td>
+      <td class="col-min">${r.minutes || 0}</td>
+      <td>${escapeHtml(String(r.ufTemp || ''))}</td>
+      <td>${escapeHtml(String(r.teaTemp || ''))}</td>
+      <td>${escapeHtml(r.equipment || '')}</td>
+      <td>${escapeHtml(r.reason || '')}</td>
+      <td>${escapeHtml(r.action || '')}</td>
+      <td>${escapeHtml(r.crEntry || '')}</td>
+      <td>${r.wastage || 0}</td>
+      <td>${escapeHtml(r.charge || '')}</td>
+    </tr>`;
+  }).join('');
+}
+
+function sum(arr, key) {
+  return arr.reduce((s, r) => s + (Number(r[key]) || 0), 0);
+}
+function pad(n) { return String(n).padStart(2, '0'); }
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function escapeAttr(s) { return escapeHtml(s); }
+</script>
+
+</body>
+</html>

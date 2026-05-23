@@ -44,7 +44,7 @@
   }
   .header-bar {
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: 1fr auto auto 1fr;
     align-items: center;
     gap: 12px;
   }
@@ -61,6 +61,16 @@
   }
   .new-cycle-btn:hover { background: var(--accent-dark); }
   .new-cycle-btn:active { transform: translateY(1px); }
+  .analysis-link {
+    justify-self: center;
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--accent); text-decoration: none;
+    border: 1px solid var(--accent);
+    padding: 8px 16px; min-height: 40px;
+    border-radius: 8px; font-weight: 700; font-size: 14px;
+    background: var(--surface);
+  }
+  .analysis-link:hover { background: var(--accent-bg, #eff6ff); }
 
   /* 部署ピル: 大きめ＆過度に角丸 */
   .header-right {
@@ -322,6 +332,7 @@
   <div class="header-bar">
     <h1>充填停止記録</h1>
     <button class="new-cycle-btn" onclick="showNewCycleModal()">+ 日報新規作成</button>
+    <a class="analysis-link" href="<?= appUrl ?>?page=analysis&line=2L" title="分析ページへ">📊 分析</a>
     <div class="header-right">
       <span class="dept-pill empty" id="dept-pill" onclick="showDeptModal()">部署を選択</span>
       <button class="reload-btn" id="reload-btn" onclick="reloadAll()" title="一覧を更新">
