@@ -156,6 +156,7 @@ function api_initialLoad(line) {
     })),
     departments: _getDepartments(),
     products: _getProducts(),
+    lastProducts: _getLastProducts(),
     cycles: _getCycles({ year: year, line: line, limit: CONFIG.CYCLES_PER_PAGE })
   };
 }
@@ -279,7 +280,8 @@ function api_getCycleDetail(cycleID) {
     cycle: cycle,
     stopRecords: _getStopRecords(cycleID),
     masters: _getMasters(),
-    products: _getProducts()
+    products: _getProducts(),
+    lastProducts: _getLastProducts()
   };
 }
 
@@ -961,6 +963,38 @@ function _getProducts() {
 
   cache.put(CONFIG.CACHE_KEY_PRODUCT, JSON.stringify(products), CONFIG.CACHE_DURATION_SEC);
   return products;
+}
+
+/**
+ * ライン別「最後に選択された商品ID」をPropertiesServiceから一括取得
+ * 端末横断で共有される
+ */
+function _getLastProducts() {
+  const props = PropertiesService.getScriptProperties();
+  const result = {};
+  Object.keys(CONFIG.LINES).forEach(line => {
+    result[line] = props.getProperty('last_product_' + line) || '';
+  });
+  return result;
+}
+
+function _setLastProduct(line, productID) {
+  if (!line) return;
+  PropertiesService.getScriptProperties().setProperty('last_product_' + line, productID || '');
+}
+
+/**
+ * ライン別最後に選択された商品ID を更新
+ * payload: { line, productID }
+ */
+function api_setLastProduct(payload) {
+  if (!payload || !payload.line) return { success: false, error: 'line は必須です' };
+  try {
+    _setLastProduct(payload.line, payload.productID || '');
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 }
 
 /**

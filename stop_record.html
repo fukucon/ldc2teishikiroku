@@ -95,9 +95,8 @@
   .add-bar-inline {
     display: flex; align-items: center; gap: 6px;
     flex-shrink: 0;
-    padding: 4px 8px;
-    border: 2px solid var(--accent);
-    background: var(--surface);
+    padding: 4px 0;
+    background: transparent;
   }
   .add-bar-title {
     font-size: 14px; font-weight: 700; color: var(--accent);
@@ -130,17 +129,17 @@
     min-width: 110px;
   }
 
-  /* 製造時間 右端の商品表示 */
-  .prod-product-display {
-    display: inline-flex; align-items: center; gap: 6px;
-    margin-left: auto;
-    font-size: 15px; font-weight: 700; color: var(--text);
-    padding: 3px 10px;
-    background: #e0f2fe; border-radius: 5px;
-    border: 1px solid #bae6fd;
+  /* 停止記録 各行 右端の商品バッジ */
+  .record-product {
+    font-size: 12px; font-weight: 700;
+    padding: 3px 8px;
+    background: #dbeafe; color: #1e40af;
+    border: 1px solid #93c5fd; border-radius: 4px;
+    white-space: nowrap;
   }
-  .prod-product-display.empty { background: #f3f4f6; color: var(--muted); border-color: #e5e7eb; }
-  .prod-product-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .record-product.empty {
+    color: var(--muted); background: #f3f4f6; border-color: #e5e7eb;
+  }
 
   /* 商品切替 UI (停止記録カード内) */
   .record-switch {
@@ -451,10 +450,6 @@
         <input type="time" id="prod-end-time" onchange="onProdEndChange()">
         <span class="save-indicator" id="end-save"></span>
       </div>
-      <div class="prod-product-display empty" id="cycle-product-display" title="現在の商品">
-        <span class="prod-product-label">商品</span>
-        <span id="cycle-product-name">—</span>
-      </div>
     </div>
     <!-- 停止記録の追加（右、1行） -->
     <div class="add-bar-inline">
@@ -502,7 +497,8 @@ const STATE = {
   cycle: null,
   stopRecords: [],
   masters: null,
-  products: []
+  products: [],
+  lastProducts: {}   // { '2L': 'P001', '500ml': 'P004' }
 };
 
 // localStorage キャッシュ（マスタ・商品）
@@ -659,9 +655,9 @@ function softMerge(detail) {
     renderRecordList();
   }
 
-  // 商品セレクタと商品名表示も更新
+  // 商品セレクタを更新（停止記録ごとの商品バッジは renderRecordList で更新）
+  if (detail.lastProducts) STATE.lastProducts = detail.lastProducts;
   populateCycleProductSelect();
-  updateProductDisplay();
 }
 
 // =====================================================
@@ -693,6 +689,7 @@ window.addEventListener('DOMContentLoaded', () => {
       STATE.products = res.products;
       saveCachedProducts(STATE.products);
     }
+    if (res.lastProducts) STATE.lastProducts = res.lastProducts;
     renderAll();
     startAutoRefresh();
     startWakeLock();
@@ -750,9 +747,8 @@ function renderAll() {
   // 製造開始/終了の初期化
   initProdTimes();
 
-  // 商品セレクタ + 現在商品表示
+  // 商品セレクタ（行ごとの商品バッジは renderRecordList で描画）
   populateCycleProductSelect();
-  updateProductDisplay();
 
   // 停止記録 追加フォームの初期化
   initStopForm();
@@ -955,25 +951,25 @@ function productName(id) {
   const p = (STATE.products || []).find(x => x.id === id);
   return p ? p.name : id;
 }
-// 指定 stopAt の直前時点での商品ID
-function computeProductBefore(stopAt) {
-  let current = STATE.cycle ? (STATE.cycle.productID || '') : '';
-  const sorted = (STATE.stopRecords || []).slice().sort((a, b) =>
-    a.stopAt < b.stopAt ? -1 : a.stopAt > b.stopAt ? 1 : 0
-  );
-  for (const r of sorted) {
-    if (new Date(r.stopAt) >= new Date(stopAt)) break;
-    if (r.newProductID) current = r.newProductID;
-  }
-  return current;
+// このサイクルの「ベース商品」: cycle.productID > lastProducts[line] > 空
+function baseProductID() {
+  if (!STATE.cycle) return '';
+  if (STATE.cycle.productID) return STATE.cycle.productID;
+  const line = STATE.cycle.line || '';
+  return (STATE.lastProducts && STATE.lastProducts[line]) || '';
 }
-// 全 stop を反映した「現在の商品ID」
-function computeCurrentProduct() {
-  let current = STATE.cycle ? (STATE.cycle.productID || '') : '';
+// 指定 stopAt 時点 (この stop の開始時) で有効な商品ID
+//   - includeThis=true: この stop の newProductID も適用 (switch時 after を返す)
+//   - includeThis=false: この stop の直前の商品 (switch時 before を返す)
+function computeProductAt(stopAt, includeThis) {
+  let current = baseProductID();
   const sorted = (STATE.stopRecords || []).slice().sort((a, b) =>
     a.stopAt < b.stopAt ? -1 : a.stopAt > b.stopAt ? 1 : 0
   );
   for (const r of sorted) {
+    const cmp = new Date(r.stopAt) - new Date(stopAt);
+    if (cmp > 0) break;
+    if (cmp === 0 && !includeThis) break;
     if (r.newProductID) current = r.newProductID;
   }
   return current;
@@ -991,30 +987,29 @@ function populateCycleProductSelect() {
   const sel = document.getElementById('cycle-product');
   if (!sel || !STATE.cycle) return;
   if (document.activeElement === sel) return;   // 編集中はスキップ
-  sel.innerHTML = productOptionsHtml(lineProducts(), STATE.cycle.productID || '');
-}
-
-function updateProductDisplay() {
-  const el = document.getElementById('cycle-product-name');
-  const wrap = document.getElementById('cycle-product-display');
-  if (!el || !wrap) return;
-  const id = computeCurrentProduct();
-  const name = productName(id);
-  el.textContent = name || '—';
-  wrap.classList.toggle('empty', !name);
+  // セレクタの初期値: cycle.productID があればそれ、なければ lastProducts[line]
+  const initial = STATE.cycle.productID
+    || (STATE.lastProducts && STATE.lastProducts[STATE.cycle.line])
+    || '';
+  sel.innerHTML = productOptionsHtml(lineProducts(), initial);
 }
 
 function saveCycleProduct() {
   const sel = document.getElementById('cycle-product');
   const val = sel ? sel.value : '';
+  const line = STATE.cycle.line;
   setSaveIndicator('cycle-product-save', 'saving');
-  gas('api_updateCycleField', {
-    cycleID: STATE.cycle.cycleID, field: 'productID', value: val
-  }).then(res => {
-    if (!res.success) { setSaveIndicator('cycle-product-save', 'error'); return; }
+  Promise.all([
+    gas('api_updateCycleField', { cycleID: STATE.cycle.cycleID, field: 'productID', value: val }),
+    gas('api_setLastProduct',  { line: line, productID: val })
+  ]).then(([res1, res2]) => {
+    if (!res1.success || !res2.success) {
+      setSaveIndicator('cycle-product-save', 'error');
+      return;
+    }
     STATE.cycle.productID = val;
+    STATE.lastProducts[line] = val;
     setSaveIndicator('cycle-product-save', 'saved');
-    updateProductDisplay();
     renderRecordList();
   }).catch(() => setSaveIndicator('cycle-product-save', 'error'));
 }
@@ -1049,11 +1044,12 @@ function renderRecordList() {
     const showStartDate = hasStart && startDateStr !== stopDateStr;
     const monthOptsSel = monthOpts.replace(`value="${stopMonth}"`, `value="${stopMonth}" selected`);
     const dayOptsSel   = dayOpts.replace(`value="${stopDay}"`,     `value="${stopDay}" selected`);
-    // 商品切替 判定
+    // 商品切替 判定 / この行の商品（切替後 or 前）
     const isSwitch = String(r.equipment || '').indexOf('商品切替') !== -1;
-    const beforeProductID = isSwitch ? computeProductBefore(r.stopAt) : '';
+    const beforeProductID = isSwitch ? computeProductAt(r.stopAt, false) : '';
     const beforeProductName = productName(beforeProductID);
     const switchProductOpts = isSwitch ? productOptionsHtml(lineProducts(), r.newProductID || '') : '';
+    const activeProductName = productName(computeProductAt(r.stopAt, true));
     return `
       <div class="record-item ${hasStart ? '' : 'unfinished'}" data-log-id="${lid}">
         <div class="record-header">
@@ -1073,6 +1069,7 @@ function renderRecordList() {
             onchange="saveRecordField('${lid}', 'startTime', this.value)">
           <span class="rec-ind" data-ind="${lid}-startTime"></span>
           <span class="record-minutes ${hasStart ? '' : 'pending'}" data-min="${lid}">${minutesStr}</span>
+          <span class="record-product ${activeProductName ? '' : 'empty'}">${escapeHtml(activeProductName || '—')}</span>
         </div>
         ${isSwitch ? `
         <div class="record-switch">
@@ -1218,9 +1215,8 @@ function saveRecordField(logID, fieldKey, value) {
     setRecInd(indEl, 'saved', '保存');
     const rec = STATE.stopRecords.find(function(r) { return r.logID === logID; });
     if (rec) rec[fieldKey] = trimmed;
-    // 商品切替の保存 or 停止設備変更時は表示も再計算
+    // 商品切替の保存 or 停止設備変更時は再描画して各行の商品バッジを更新
     if (fieldKey === 'newProductID' || fieldKey === 'equipment') {
-      updateProductDisplay();
       renderRecordList();
     }
   }).catch(function(err) { setRecInd(indEl, 'error', err.message); });
