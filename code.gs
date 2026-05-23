@@ -39,8 +39,8 @@ const CONFIG = {
   YEAR_RANGE: 1,            // 現在年 ± N
   CYCLES_PER_PAGE: 20,      // 一覧ページネーション
 
-  // キャッシュ秒数
-  CACHE_DURATION_SEC: 300,
+  // キャッシュ秒数（Apps Script CacheService 最大値 = 21600秒 / 6時間）
+  CACHE_DURATION_SEC: 21600,
   CACHE_KEY_DEPT:    'master_departments_v1',
   CACHE_KEY_MASTERS: 'master_freelist_v1',
   CACHE_KEY_PRODUCT: 'master_products_v1'
@@ -65,8 +65,9 @@ const HEADER_COLS = [
   '停止記録件数',     // 10 子レコード件数のキャッシュ
   '合計停止分',       // 11 子レコード合計分のキャッシュ
   '最終更新',         // 12
-  '製造開始日時',     // 13 (NEW) Date / ISO
-  '製造終了日時'      // 14 (NEW) Date / ISO
+  '製造開始日時',     // 13 Date / ISO
+  '製造終了日時',     // 14 Date / ISO
+  '商品ID'           // 15 (NEW) サイクル開始時の商品（途中で 商品切替 ログがあればそちらが反映される）
 ];
 
 // 列名→indexのマップ（HC.停止記録件数 のように使う）
@@ -89,7 +90,8 @@ const LOG_COLS = [
   'UF温度',           // 11
   'TEA温度',          // 12
   '記録部署',         // 13
-  '記録日時'          // 14
+  '記録日時',         // 14
+  '切替後商品ID'      // 15 (NEW) 停止設備に 商品切替 を含むときだけ入れる
 ];
 const LC = {};
 LOG_COLS.forEach((n, i) => LC[n] = i);
@@ -246,7 +248,8 @@ function api_createCycle(payload) {
       0,            // 合計停止分
       now,
       '',           // 製造開始日時（未設定）
-      ''            // 製造終了日時（未設定）
+      '',           // 製造終了日時（未設定）
+      ''            // 商品ID（未設定）
     ]);
 
     return {
@@ -291,7 +294,8 @@ function api_updateCycleField(payload) {
   const fieldMap = {
     'productionStartAt': '製造開始日時',
     'productionEndAt':   '製造終了日時',
-    'notes':             '特記事項'
+    'notes':             '特記事項',
+    'productID':         '商品ID'
   };
   const colName = fieldMap[field];
   if (!colName) return { success: false, error: '不正なフィールド: ' + field };
@@ -377,7 +381,8 @@ function api_addStopRecord(payload) {
       ufTemp,
       teaTemp,
       recordDept,
-      now
+      now,
+      ''           // 切替後商品ID（後から api_updateStopRecordFields で設定）
     ]);
 
     // 親のキャッシュ列を更新
@@ -548,14 +553,15 @@ function api_updateStopRecordFields(payload) {
   if (!sheet) return { success: false, error: '停止ログシートがありません' };
 
   const fieldMap = {
-    equipment: '停止設備',
-    reason:    '停止理由',
-    action:    '対応内容',
-    charge:    '担当',
-    crEntry:   'CR入室',
-    wastage:   '廃棄本数',
-    ufTemp:    'UF温度',
-    teaTemp:   'TEA温度'
+    equipment:    '停止設備',
+    reason:       '停止理由',
+    action:       '対応内容',
+    charge:       '担当',
+    crEntry:      'CR入室',
+    wastage:      '廃棄本数',
+    ufTemp:       'UF温度',
+    teaTemp:      'TEA温度',
+    newProductID: '切替後商品ID'
   };
 
   const lock = LockService.getScriptLock();
@@ -655,7 +661,8 @@ function _findCycle(cycleID) {
         totalStopMinutes: r[11],
         lastUpdated: _toIso(r[12]),
         productionStartAt: _toIso(r[13]),
-        productionEndAt: _toIso(r[14])
+        productionEndAt: _toIso(r[14]),
+        productID: r[15] ? String(r[15]) : ''
       };
     }
   }
@@ -688,7 +695,8 @@ function _getStopRecords(cycleID) {
       ufTemp: r[11],
       teaTemp: r[12],
       recordDept: r[13],
-      recordedAt: _toIso(r[14])
+      recordedAt: _toIso(r[14]),
+      newProductID: r[15] ? String(r[15]) : ''
     }))
     .sort((a, b) => (a.stopAt < b.stopAt ? -1 : a.stopAt > b.stopAt ? 1 : 0));
 }
@@ -876,7 +884,8 @@ function _getCycles(params) {
       totalStopMinutes: r[11],
       lastUpdated: _toIso(r[12]),
       productionStartAt: _toIso(r[13]),
-      productionEndAt: _toIso(r[14])
+      productionEndAt: _toIso(r[14]),
+      productID: r[15] ? String(r[15]) : ''
     })),
     hasMore: hasMore,
     nextBeforeDate: hasMore ? _toDateStr(page[page.length - 1][2]) : null
@@ -924,7 +933,7 @@ function _getDepartments() {
 
 /**
  * 商品マスター取得（共通マスタースプシの「商品マスター」シートから）
- *   A列: 商品ID, B列: 商品名（1行目はヘッダー）
+ *   A列: 商品ID, B列: 商品名, C列: 種別（2L / 500ml）
  */
 function _getProducts() {
   const cache = CacheService.getScriptCache();
@@ -936,11 +945,15 @@ function _getProducts() {
     const ss = _masterSS();
     const sheet = ss.getSheetByName(CONFIG.MASTER_PRODUCT);
     if (sheet && sheet.getLastRow() >= 2) {
-      const cols = Math.min(2, sheet.getLastColumn());
+      const cols = Math.min(3, sheet.getLastColumn());
       const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
       products = rows
         .filter(r => r[0])
-        .map(r => ({ id: String(r[0]), name: String(r[1] || r[0]) }));
+        .map(r => ({
+          id: String(r[0]),
+          name: String(r[1] || r[0]),
+          kind: String(r[2] || '')
+        }));
     }
   } catch (e) {
     Logger.log('_getProducts エラー: ' + e.message);

@@ -117,6 +117,50 @@
     padding: 6px 14px; min-height: 36px;
     font-size: 14px; font-weight: 700;
   }
+  .add-bar-product {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding-left: 8px; margin-left: 4px;
+    border-left: 1px solid #d1d5db;
+  }
+  .add-bar-product-label { font-size: 13px; font-weight: 700; color: var(--muted); }
+  .add-bar-product select {
+    font-size: 14px; font-weight: 700;
+    min-height: 36px; padding: 4px 6px;
+    border: 1px solid #d1d5db; border-radius: 5px;
+    min-width: 110px;
+  }
+
+  /* 製造時間 右端の商品表示 */
+  .prod-product-display {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-left: auto;
+    font-size: 15px; font-weight: 700; color: var(--text);
+    padding: 3px 10px;
+    background: #e0f2fe; border-radius: 5px;
+    border: 1px solid #bae6fd;
+  }
+  .prod-product-display.empty { background: #f3f4f6; color: var(--muted); border-color: #e5e7eb; }
+  .prod-product-label { font-size: 12px; color: var(--muted); font-weight: 600; }
+
+  /* 商品切替 UI (停止記録カード内) */
+  .record-switch {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; margin-bottom: 8px;
+    background: #fef3c7; border: 1px solid #fcd34d; border-radius: 6px;
+    font-size: 13px; flex-wrap: wrap;
+  }
+  .record-switch-label { font-weight: 700; color: #92400e; }
+  .record-switch-from {
+    font-weight: 700; padding: 2px 8px;
+    background: var(--surface); border: 1px solid #fcd34d; border-radius: 4px;
+  }
+  .record-switch-arrow { color: #92400e; font-weight: 700; font-size: 15px; }
+  .record-switch select {
+    flex: 1; min-width: 140px;
+    font-size: 13px; font-weight: 700;
+    min-height: 32px; padding: 4px 8px;
+    border: 1px solid #d1d5db; border-radius: 5px;
+  }
 
   /* ── セクション ── */
   main {
@@ -407,6 +451,10 @@
         <input type="time" id="prod-end-time" onchange="onProdEndChange()">
         <span class="save-indicator" id="end-save"></span>
       </div>
+      <div class="prod-product-display empty" id="cycle-product-display" title="現在の商品">
+        <span class="prod-product-label">商品</span>
+        <span id="cycle-product-name">—</span>
+      </div>
     </div>
     <!-- 停止記録の追加（右、1行） -->
     <div class="add-bar-inline">
@@ -416,6 +464,11 @@
       <select id="stop-day-day"></select>
       <input type="time" id="stop-stop-time">
       <button class="btn-primary btn-add-small" id="stop-add-btn" onclick="addStopRecord()">追加</button>
+      <span class="add-bar-product">
+        <span class="add-bar-product-label">商品</span>
+        <select id="cycle-product" onchange="saveCycleProduct()"></select>
+        <span class="save-indicator" id="cycle-product-save"></span>
+      </span>
     </div>
   </div>
   <div class="error-text" id="stop-error" style="display: none; padding: 0 14px 6px;"></div>
@@ -605,6 +658,10 @@ function softMerge(detail) {
   if (!activeIsRecord) {
     renderRecordList();
   }
+
+  // 商品セレクタと商品名表示も更新
+  populateCycleProductSelect();
+  updateProductDisplay();
 }
 
 // =====================================================
@@ -692,6 +749,10 @@ function renderAll() {
 
   // 製造開始/終了の初期化
   initProdTimes();
+
+  // 商品セレクタ + 現在商品表示
+  populateCycleProductSelect();
+  updateProductDisplay();
 
   // 停止記録 追加フォームの初期化
   initStopForm();
@@ -883,6 +944,82 @@ function addStopRecord() {
 }
 
 // =====================================================
+//  商品関連ヘルパー
+// =====================================================
+function lineProducts() {
+  const line = STATE.cycle ? STATE.cycle.line : '';
+  return (STATE.products || []).filter(p => !p.kind || p.kind === line);
+}
+function productName(id) {
+  if (!id) return '';
+  const p = (STATE.products || []).find(x => x.id === id);
+  return p ? p.name : id;
+}
+// 指定 stopAt の直前時点での商品ID
+function computeProductBefore(stopAt) {
+  let current = STATE.cycle ? (STATE.cycle.productID || '') : '';
+  const sorted = (STATE.stopRecords || []).slice().sort((a, b) =>
+    a.stopAt < b.stopAt ? -1 : a.stopAt > b.stopAt ? 1 : 0
+  );
+  for (const r of sorted) {
+    if (new Date(r.stopAt) >= new Date(stopAt)) break;
+    if (r.newProductID) current = r.newProductID;
+  }
+  return current;
+}
+// 全 stop を反映した「現在の商品ID」
+function computeCurrentProduct() {
+  let current = STATE.cycle ? (STATE.cycle.productID || '') : '';
+  const sorted = (STATE.stopRecords || []).slice().sort((a, b) =>
+    a.stopAt < b.stopAt ? -1 : a.stopAt > b.stopAt ? 1 : 0
+  );
+  for (const r of sorted) {
+    if (r.newProductID) current = r.newProductID;
+  }
+  return current;
+}
+function productOptionsHtml(products, currentValue) {
+  let opts = '<option value="">— 未選択 —</option>';
+  products.forEach(p => {
+    const sel = p.id === currentValue ? ' selected' : '';
+    opts += '<option value="' + escapeAttr(p.id) + '"' + sel + '>' + escapeHtml(p.name) + '</option>';
+  });
+  return opts;
+}
+
+function populateCycleProductSelect() {
+  const sel = document.getElementById('cycle-product');
+  if (!sel || !STATE.cycle) return;
+  if (document.activeElement === sel) return;   // 編集中はスキップ
+  sel.innerHTML = productOptionsHtml(lineProducts(), STATE.cycle.productID || '');
+}
+
+function updateProductDisplay() {
+  const el = document.getElementById('cycle-product-name');
+  const wrap = document.getElementById('cycle-product-display');
+  if (!el || !wrap) return;
+  const id = computeCurrentProduct();
+  const name = productName(id);
+  el.textContent = name || '—';
+  wrap.classList.toggle('empty', !name);
+}
+
+function saveCycleProduct() {
+  const sel = document.getElementById('cycle-product');
+  const val = sel ? sel.value : '';
+  setSaveIndicator('cycle-product-save', 'saving');
+  gas('api_updateCycleField', {
+    cycleID: STATE.cycle.cycleID, field: 'productID', value: val
+  }).then(res => {
+    if (!res.success) { setSaveIndicator('cycle-product-save', 'error'); return; }
+    STATE.cycle.productID = val;
+    setSaveIndicator('cycle-product-save', 'saved');
+    updateProductDisplay();
+    renderRecordList();
+  }).catch(() => setSaveIndicator('cycle-product-save', 'error'));
+}
+
+// =====================================================
 //  停止記録一覧（各行に全フィールドをインライン表示）
 // =====================================================
 function renderRecordList() {
@@ -912,6 +1049,11 @@ function renderRecordList() {
     const showStartDate = hasStart && startDateStr !== stopDateStr;
     const monthOptsSel = monthOpts.replace(`value="${stopMonth}"`, `value="${stopMonth}" selected`);
     const dayOptsSel   = dayOpts.replace(`value="${stopDay}"`,     `value="${stopDay}" selected`);
+    // 商品切替 判定
+    const isSwitch = String(r.equipment || '').indexOf('商品切替') !== -1;
+    const beforeProductID = isSwitch ? computeProductBefore(r.stopAt) : '';
+    const beforeProductName = productName(beforeProductID);
+    const switchProductOpts = isSwitch ? productOptionsHtml(lineProducts(), r.newProductID || '') : '';
     return `
       <div class="record-item ${hasStart ? '' : 'unfinished'}" data-log-id="${lid}">
         <div class="record-header">
@@ -932,6 +1074,18 @@ function renderRecordList() {
           <span class="rec-ind" data-ind="${lid}-startTime"></span>
           <span class="record-minutes ${hasStart ? '' : 'pending'}" data-min="${lid}">${minutesStr}</span>
         </div>
+        ${isSwitch ? `
+        <div class="record-switch">
+          <span class="record-switch-label">商品切替</span>
+          <span class="record-switch-from">${escapeHtml(beforeProductName || '未設定')}</span>
+          <span class="record-switch-arrow">→</span>
+          <select class="record-field"
+            data-log-id="${lid}" data-field="newProductID"
+            onchange="saveRecordField('${lid}', 'newProductID', this.value)">
+            ${switchProductOpts}
+          </select>
+          <span class="rec-ind" data-ind="${lid}-newProductID"></span>
+        </div>` : ''}
         <div class="record-fields-grid">
           <div>
             <div class="field-label">停止設備</div>
@@ -1064,6 +1218,11 @@ function saveRecordField(logID, fieldKey, value) {
     setRecInd(indEl, 'saved', '保存');
     const rec = STATE.stopRecords.find(function(r) { return r.logID === logID; });
     if (rec) rec[fieldKey] = trimmed;
+    // 商品切替の保存 or 停止設備変更時は表示も再計算
+    if (fieldKey === 'newProductID' || fieldKey === 'equipment') {
+      updateProductDisplay();
+      renderRecordList();
+    }
   }).catch(function(err) { setRecInd(indEl, 'error', err.message); });
 }
 
