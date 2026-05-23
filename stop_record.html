@@ -140,6 +140,33 @@
   .record-product.empty {
     color: var(--muted); background: #f3f4f6; border-color: #e5e7eb;
   }
+  .record-product-arrow {
+    color: #1e40af; font-weight: 700; font-size: 13px;
+  }
+  .record-product-select {
+    font-size: 12px; font-weight: 700;
+    min-height: 28px; padding: 2px 6px;
+    border: 1px solid #93c5fd; border-radius: 4px;
+    background: #fff; color: #1e40af;
+  }
+
+  /* 時刻 (時:分) のセレクタペア */
+  .time-pair {
+    display: inline-flex; align-items: center; gap: 2px;
+  }
+  .time-pair > .colon {
+    font-weight: 700; color: var(--muted);
+  }
+  .time-pair > select {
+    font-size: 14px; font-weight: 700;
+    min-height: 30px; padding: 2px 4px;
+    width: 56px; min-width: 56px;
+    border: 1px solid #d1d5db; border-radius: 5px;
+    text-align: center;
+  }
+  .prod-time-line .time-pair > select {
+    min-height: 34px; padding: 2px 6px;
+  }
 
   /* 商品切替 UI (停止記録カード内) */
   .record-switch {
@@ -311,13 +338,6 @@
     border-bottom: 1px dashed var(--border);
   }
   .record-header .arrow { color: var(--muted); font-size: 14px; }
-  .record-header .end-input,
-  .record-header .rec-stop-time {
-    width: 100px; min-width: 100px;     /* Safari 空欄時の縮みを防ぐ */
-    min-height: 30px; padding: 2px 6px;
-    font-size: 14px; font-weight: 700; text-align: center;
-    border: 1px solid #d1d5db; border-radius: 5px;
-  }
   .record-header .rec-stop-month,
   .record-header .rec-stop-day {
     font-size: 13px; font-weight: 700;
@@ -438,7 +458,11 @@
       <div class="prod-group prod-start">
         <span class="prod-label">開始</span>
         <span class="prod-date-display" id="prod-start-date-display">—</span>
-        <input type="time" id="prod-start-time" onchange="onProdStartChange()">
+        <span class="time-pair">
+          <select id="prod-start-hour" onchange="onProdStartChange()"></select>
+          <span class="colon">:</span>
+          <select id="prod-start-minute" onchange="onProdStartChange()"></select>
+        </span>
         <span class="save-indicator" id="start-save"></span>
       </div>
       <span class="prod-separator">〜</span>
@@ -447,7 +471,11 @@
         <select id="prod-end-month" onchange="onProdEndChange()"></select>
         <span>/</span>
         <select id="prod-end-day" onchange="onProdEndChange()"></select>
-        <input type="time" id="prod-end-time" onchange="onProdEndChange()">
+        <span class="time-pair">
+          <select id="prod-end-hour" onchange="onProdEndChange()"></select>
+          <span class="colon">:</span>
+          <select id="prod-end-minute" onchange="onProdEndChange()"></select>
+        </span>
         <span class="save-indicator" id="end-save"></span>
       </div>
     </div>
@@ -457,7 +485,11 @@
       <select id="stop-day-month"></select>
       <span>/</span>
       <select id="stop-day-day"></select>
-      <input type="time" id="stop-stop-time">
+      <span class="time-pair">
+        <select id="stop-stop-hour"></select>
+        <span class="colon">:</span>
+        <select id="stop-stop-minute"></select>
+      </span>
       <button class="btn-primary btn-add-small" id="stop-add-btn" onclick="addStopRecord()">追加</button>
       <span class="add-bar-product">
         <span class="add-bar-product-label">商品</span>
@@ -627,24 +659,28 @@ function softMerge(detail) {
   fillDatalist('reason-list', STATE.masters.reason);
   fillDatalist('action-list', STATE.masters.action);
 
-  // 製造開始時刻: focus 中はスキップ
-  const startEl = document.getElementById('prod-start-time');
-  if (startEl && document.activeElement !== startEl) {
-    startEl.value = detail.cycle.productionStartAt ? hhmm(detail.cycle.productionStartAt) : '';
+  // 製造開始 時:分: focus 中はスキップ
+  const startH = document.getElementById('prod-start-hour');
+  const startM = document.getElementById('prod-start-minute');
+  const ae = document.activeElement;
+  if (startH && startM && ae !== startH && ae !== startM) {
+    setTimePair('prod-start-hour', 'prod-start-minute',
+      detail.cycle.productionStartAt ? hhmm(detail.cycle.productionStartAt) : '', true);
   }
-  // 製造終了 月/日/時刻: いずれかが focus 中ならスキップ
+  // 製造終了 月/日/時:分: いずれかが focus 中ならスキップ
   const endM = document.getElementById('prod-end-month');
   const endD = document.getElementById('prod-end-day');
-  const endT = document.getElementById('prod-end-time');
-  const ae = document.activeElement;
-  if (endM && endD && endT && ae !== endM && ae !== endD && ae !== endT) {
+  const endH = document.getElementById('prod-end-hour');
+  const endMi = document.getElementById('prod-end-minute');
+  if (endM && endD && endH && endMi &&
+      ae !== endM && ae !== endD && ae !== endH && ae !== endMi) {
     if (detail.cycle.productionEndAt) {
       const d = new Date(detail.cycle.productionEndAt);
       endM.value = d.getMonth() + 1;
       endD.value = d.getDate();
-      endT.value = hhmm(detail.cycle.productionEndAt);
+      setTimePair('prod-end-hour', 'prod-end-minute', hhmm(detail.cycle.productionEndAt), true);
     } else {
-      endT.value = '';
+      setTimePair('prod-end-hour', 'prod-end-minute', '', true);
     }
   }
 
@@ -777,27 +813,29 @@ function initProdTimes() {
   document.getElementById('prod-start-date-display').textContent =
     parseInt(md[1], 10) + '/' + parseInt(md[2], 10);
 
-  // 開始: 時刻のみ
-  if (c.productionStartAt) {
-    document.getElementById('prod-start-time').value = hhmm(c.productionStartAt);
-  }
-  // 終了: 月/日/時刻
+  // 開始: 時:分（空可）
+  setTimePair('prod-start-hour', 'prod-start-minute',
+    c.productionStartAt ? hhmm(c.productionStartAt) : '', true);
+  // 終了: 月/日/時:分（空可）
   buildSelect('prod-end-month', range(1, 12), null);
   buildSelect('prod-end-day',   range(1, 31), null);
   if (c.productionEndAt) {
     const d = new Date(c.productionEndAt);
     document.getElementById('prod-end-month').value = d.getMonth() + 1;
     document.getElementById('prod-end-day').value = d.getDate();
-    document.getElementById('prod-end-time').value = hhmm(c.productionEndAt);
+    setTimePair('prod-end-hour', 'prod-end-minute', hhmm(c.productionEndAt), true);
   } else {
-    // デフォルト: 製造日
     document.getElementById('prod-end-month').value = parseInt(md[1], 10);
     document.getElementById('prod-end-day').value = parseInt(md[2], 10);
+    setTimePair('prod-end-hour', 'prod-end-minute', '', true);
   }
 }
 
 function onProdStartChange() {
-  const t = document.getElementById('prod-start-time').value;
+  const t = readTimePair(
+    document.getElementById('prod-start-hour'),
+    document.getElementById('prod-start-minute')
+  );
   if (!t) return;
   // 製造日 + 時刻
   const iso = STATE.cycle.productionDate + 'T' + t + ':00';
@@ -818,7 +856,10 @@ function onProdEndChange() {
   const y = STATE.cycle.productionDate.slice(0, 4);
   const m = parseInt(document.getElementById('prod-end-month').value, 10);
   const d = parseInt(document.getElementById('prod-end-day').value, 10);
-  const t = document.getElementById('prod-end-time').value;
+  const t = readTimePair(
+    document.getElementById('prod-end-hour'),
+    document.getElementById('prod-end-minute')
+  );
 
   // 時刻が空 → 終了を解除
   if (!t) {
@@ -869,6 +910,7 @@ function initStopForm() {
   const today = new Date();
   buildSelect('stop-day-month', range(1, 12), today.getMonth() + 1);
   buildSelect('stop-day-day',   range(1, 31), today.getDate());
+  setTimePair('stop-stop-hour', 'stop-stop-minute', '', true);
 }
 
 function addStopRecord() {
@@ -877,7 +919,10 @@ function addStopRecord() {
 
   const m = parseInt(document.getElementById('stop-day-month').value, 10);
   const d = parseInt(document.getElementById('stop-day-day').value, 10);
-  const stopTime = document.getElementById('stop-stop-time').value;
+  const stopTime = readTimePair(
+    document.getElementById('stop-stop-hour'),
+    document.getElementById('stop-stop-minute')
+  );
   if (!stopTime) {
     errEl.textContent = 'ストップ時刻を入力してください';
     errEl.style.display = 'block';
@@ -911,7 +956,7 @@ function addStopRecord() {
       errEl.style.display = 'block';
       return;
     }
-    document.getElementById('stop-stop-time').value = '';
+    setTimePair('stop-stop-hour', 'stop-stop-minute', '', true);
     return gas('api_getCycleDetail', STATE.cycle.cycleID).then(detail => {
       if (detail.success) {
         STATE.cycle = detail.cycle;
@@ -1050,39 +1095,44 @@ function renderRecordList() {
     const beforeProductName = productName(beforeProductID);
     const switchProductOpts = isSwitch ? productOptionsHtml(lineProducts(), r.newProductID || '') : '';
     const activeProductName = productName(computeProductAt(r.stopAt, true));
+    const stopHour = stop.getHours();
+    const stopMin  = stop.getMinutes();
+    const startHr  = hasStart ? new Date(r.startAt).getHours() : '';
+    const startMn  = hasStart ? new Date(r.startAt).getMinutes() : '';
+    // 商品バッジ部分: switch なら "before [青] → [select]"、それ以外は単独表示
+    const productCell = isSwitch
+      ? `<span class="record-product ${beforeProductName ? '' : 'empty'}">${escapeHtml(beforeProductName || '—')}</span>
+         <span class="record-product-arrow">→</span>
+         <select class="record-product-select record-field"
+           data-log-id="${lid}" data-field="newProductID"
+           onchange="saveRecordField('${lid}', 'newProductID', this.value)">
+           ${switchProductOpts}
+         </select>
+         <span class="rec-ind" data-ind="${lid}-newProductID"></span>`
+      : `<span class="record-product ${activeProductName ? '' : 'empty'}">${escapeHtml(activeProductName || '—')}</span>`;
     return `
       <div class="record-item ${hasStart ? '' : 'unfinished'}" data-log-id="${lid}">
         <div class="record-header">
           <select class="rec-stop-month record-field" data-log-id="${lid}" data-field="stopMonth" onchange="saveRecordStopAt('${lid}')">${monthOptsSel}</select>
           <span class="rec-stop-slash">/</span>
           <select class="rec-stop-day record-field" data-log-id="${lid}" data-field="stopDay" onchange="saveRecordStopAt('${lid}')">${dayOptsSel}</select>
-          <input type="time" class="rec-stop-time record-field"
-            data-log-id="${lid}" data-field="stopTime"
-            value="${stopStr}"
-            onchange="saveRecordStopAt('${lid}')">
+          <span class="time-pair">
+            <select class="record-field" data-log-id="${lid}" data-field="stopHour" onchange="saveRecordStopAt('${lid}')">${hourOptionsHtml(stopHour, false)}</select>
+            <span class="colon">:</span>
+            <select class="record-field" data-log-id="${lid}" data-field="stopMinute" onchange="saveRecordStopAt('${lid}')">${minuteOptionsHtml(stopMin, false)}</select>
+          </span>
           <span class="rec-ind" data-ind="${lid}-stopAt"></span>
           <span class="arrow">→</span>
           ${showStartDate ? `<span class="record-date">${startDateStr}</span>` : ''}
-          <input type="time" class="end-input record-field"
-            data-log-id="${lid}" data-field="startTime"
-            value="${startVal}"
-            onchange="saveRecordField('${lid}', 'startTime', this.value)">
+          <span class="time-pair">
+            <select class="record-field" data-log-id="${lid}" data-field="startHour" onchange="saveRecordStartTime('${lid}')">${hourOptionsHtml(startHr, true)}</select>
+            <span class="colon">:</span>
+            <select class="record-field" data-log-id="${lid}" data-field="startMinute" onchange="saveRecordStartTime('${lid}')">${minuteOptionsHtml(startMn, true)}</select>
+          </span>
           <span class="rec-ind" data-ind="${lid}-startTime"></span>
           <span class="record-minutes ${hasStart ? '' : 'pending'}" data-min="${lid}">${minutesStr}</span>
-          <span class="record-product ${activeProductName ? '' : 'empty'}">${escapeHtml(activeProductName || '—')}</span>
+          ${productCell}
         </div>
-        ${isSwitch ? `
-        <div class="record-switch">
-          <span class="record-switch-label">商品切替</span>
-          <span class="record-switch-from">${escapeHtml(beforeProductName || '未設定')}</span>
-          <span class="record-switch-arrow">→</span>
-          <select class="record-field"
-            data-log-id="${lid}" data-field="newProductID"
-            onchange="saveRecordField('${lid}', 'newProductID', this.value)">
-            ${switchProductOpts}
-          </select>
-          <span class="rec-ind" data-ind="${lid}-newProductID"></span>
-        </div>` : ''}
         <div class="record-fields-grid">
           <div>
             <div class="field-label">停止設備</div>
@@ -1227,7 +1277,10 @@ function saveRecordStopAt(logID) {
   if (!card) return;
   const m = parseInt(card.querySelector('[data-field="stopMonth"]').value, 10);
   const d = parseInt(card.querySelector('[data-field="stopDay"]').value, 10);
-  const t = card.querySelector('[data-field="stopTime"]').value;
+  const t = readTimePair(
+    card.querySelector('[data-field="stopHour"]'),
+    card.querySelector('[data-field="stopMinute"]')
+  );
   const indEl = findInd(logID, 'stopAt');
   if (!t) { setRecInd(indEl, 'error'); return; }
   const yearStr = STATE.cycle.productionDate.slice(0, 4);
@@ -1258,6 +1311,16 @@ function saveRecordStopAt(logID) {
   }).catch(function(err) { setRecInd(indEl, 'error'); });
 }
 
+function saveRecordStartTime(logID) {
+  const card = document.querySelector('.record-item[data-log-id="' + logID + '"]');
+  if (!card) return;
+  const t = readTimePair(
+    card.querySelector('[data-field="startHour"]'),
+    card.querySelector('[data-field="startMinute"]')
+  );
+  saveRecordField(logID, 'startTime', t);
+}
+
 function selectRecordRadio(el, logID) {
   const group = el.parentElement;
   group.querySelectorAll('.radio-option').forEach(function(d) { d.classList.remove('selected'); });
@@ -1279,6 +1342,44 @@ function buildSelect(id, values, selected) {
   el.innerHTML = values.map(v =>
     `<option value="${v}"${v === selected ? ' selected' : ''}>${v}</option>`
   ).join('');
+}
+
+function hourOptionsHtml(selectedHour, allowEmpty) {
+  let opts = allowEmpty ? '<option value="">—</option>' : '';
+  for (let h = 0; h <= 23; h++) {
+    const padded = String(h).padStart(2, '0');
+    const sel = (selectedHour !== '' && selectedHour !== null && selectedHour !== undefined && Number(selectedHour) === h) ? ' selected' : '';
+    opts += '<option value="' + h + '"' + sel + '>' + padded + '</option>';
+  }
+  return opts;
+}
+function minuteOptionsHtml(selectedMinute, allowEmpty) {
+  let opts = allowEmpty ? '<option value="">—</option>' : '';
+  for (let m = 0; m <= 59; m++) {
+    const padded = String(m).padStart(2, '0');
+    const sel = (selectedMinute !== '' && selectedMinute !== null && selectedMinute !== undefined && Number(selectedMinute) === m) ? ' selected' : '';
+    opts += '<option value="' + m + '"' + sel + '>' + padded + '</option>';
+  }
+  return opts;
+}
+// 時:分 セレクタペアから "HH:MM" 文字列を生成（どちらか空なら空文字を返す）
+function readTimePair(hourSel, minSel) {
+  const h = hourSel ? hourSel.value : '';
+  const m = minSel ? minSel.value : '';
+  if (h === '' || m === '') return '';
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+function setTimePair(hourSelId, minSelId, hhmm, allowEmpty) {
+  const hEl = document.getElementById(hourSelId);
+  const mEl = document.getElementById(minSelId);
+  let h = '', m = '';
+  if (hhmm && /^(\d{1,2}):(\d{1,2})/.test(hhmm)) {
+    const parts = hhmm.match(/^(\d{1,2}):(\d{1,2})/);
+    h = parseInt(parts[1], 10);
+    m = parseInt(parts[2], 10);
+  }
+  if (hEl) hEl.innerHTML = hourOptionsHtml(h, allowEmpty);
+  if (mEl) mEl.innerHTML = minuteOptionsHtml(m, allowEmpty);
 }
 function range(from, to) {
   const arr = [];
