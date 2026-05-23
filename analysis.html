@@ -63,6 +63,34 @@
     cursor: pointer; min-height: 36px;
   }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-export {
+    background: var(--success); color: #fff; border: none;
+    padding: 8px 18px; border-radius: 6px; font-size: 14px; font-weight: 700;
+    cursor: pointer; min-height: 36px;
+  }
+  .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-export.busy::after { content: ' …'; }
+
+  /* モーダル */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; padding: 20px;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal-dialog {
+    background: var(--surface); border-radius: 12px;
+    padding: 24px 20px 20px; max-width: 420px; width: 100%;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.25);
+  }
+  .modal-icon { text-align: center; font-size: 36px; margin-bottom: 8px; }
+  .modal-message {
+    font-size: 14px; line-height: 1.6;
+    margin-bottom: 18px; text-align: center; color: var(--text);
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .modal-message a { color: var(--accent); font-weight: 700; }
+  .modal-actions { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
 
   .section {
     background: var(--surface);
@@ -176,6 +204,18 @@
       <select id="ana-month"></select>
       <span>月</span>
       <button class="btn-primary" id="show-btn" onclick="loadAnalysis()">表示</button>
+      <button class="btn-export" id="export-btn" onclick="exportToSheet()" title="新規スプレッドシートに書き出し">スプシ出力</button>
+    </div>
+  </div>
+
+  <!-- スプシ出力結果モーダル -->
+  <div class="modal-overlay hidden" id="modal-overlay" onclick="onModalOverlayClick(event)">
+    <div class="modal-dialog">
+      <div class="modal-icon" id="modal-icon">✓</div>
+      <div class="modal-message" id="modal-message"></div>
+      <div class="modal-actions" id="modal-actions">
+        <button class="btn-primary" onclick="hideModal()">閉じる</button>
+      </div>
     </div>
   </div>
 
@@ -392,6 +432,72 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 function escapeAttr(s) { return escapeHtml(s); }
+
+// =====================================================
+//  スプシ出力
+// =====================================================
+function exportToSheet() {
+  const btn = document.getElementById('export-btn');
+  const year  = parseInt(document.getElementById('ana-year').value, 10);
+  const month = parseInt(document.getElementById('ana-month').value, 10);
+  if (!year || !month) return;
+  btn.disabled = true;
+  btn.classList.add('busy');
+  const originalLabel = btn.textContent;
+  btn.textContent = '出力中';
+  gas('api_exportAnalysisToSheet', { line: STATE.line, year: year, month: month })
+    .then(res => {
+      if (!res || !res.success) {
+        showModal(
+          '⚠',
+          'スプシ出力に失敗しました。\n' + (res && res.error ? res.error : '通信状態をご確認ください。'),
+          ''
+        );
+        return;
+      }
+      showModal(
+        '✓',
+        'スプシ出力が完了しました。\nファイル名: ' + res.fileName,
+        res.url
+      );
+    })
+    .catch(err => {
+      showModal('⚠', '通信エラー: ' + (err.message || err), '');
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.classList.remove('busy');
+      btn.textContent = originalLabel;
+    });
+}
+
+function showModal(icon, message, sheetUrl) {
+  document.getElementById('modal-icon').textContent = icon || '';
+  document.getElementById('modal-message').textContent = message || '';
+  const actions = document.getElementById('modal-actions');
+  actions.innerHTML = '';
+  if (sheetUrl) {
+    const open = document.createElement('a');
+    open.className = 'btn-primary';
+    open.textContent = 'スプシを開く';
+    open.href = sheetUrl;
+    open.target = '_blank';
+    open.style.textDecoration = 'none';
+    actions.appendChild(open);
+  }
+  const close = document.createElement('button');
+  close.className = sheetUrl ? 'btn-export' : 'btn-primary';
+  close.textContent = '閉じる';
+  close.onclick = hideModal;
+  actions.appendChild(close);
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+function hideModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+function onModalOverlayClick(e) {
+  if (e.target.id === 'modal-overlay') hideModal();
+}
 </script>
 
 </body>

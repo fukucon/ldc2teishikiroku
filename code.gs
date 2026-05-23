@@ -39,6 +39,9 @@ const CONFIG = {
   YEAR_RANGE: 1,            // 現在年 ± N
   CYCLES_PER_PAGE: 20,      // 一覧ページネーション
 
+  // 分析スプシ出力先フォルダ（空文字なら My Drive 直下、フォルダID を設定すればそこに保存）
+  EXPORT_FOLDER_ID: '',
+
   // キャッシュ秒数（Apps Script CacheService 最大値 = 21600秒 / 6時間）
   CACHE_DURATION_SEC: 21600,
   CACHE_KEY_DEPT:    'master_departments_v1',
@@ -1158,10 +1161,124 @@ function api_getAnalysis(payload) {
 }
 
 /**
+ * 分析結果を新規スプレッドシートに書き出し
+ * payload: { line, year, month }
+ * 戻り値: { success, url, fileName }
+ * 保存先: スクリプト実行者のマイドライブ直下（CONFIG.EXPORT_FOLDER_ID があればそこに移動）
+ */
+function api_exportAnalysisToSheet(payload) {
+  const data = api_getAnalysis(payload);
+  if (!data.success) return data;
+
+  try {
+    const dateTag = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HH-mm');
+    const mm = String(data.month).padStart(2, '0');
+    const name = '停止記録分析_' + data.line + '_' + data.year + '年' + mm + '月_' + dateTag;
+    const ss = SpreadsheetApp.create(name);
+
+    // メタ情報
+    const meta = ss.getActiveSheet();
+    meta.setName('メタ情報');
+    meta.getRange(1, 1, 5, 2).setValues([
+      ['ライン',      data.line],
+      ['対象年月',    data.year + '年' + data.month + '月'],
+      ['比較対象',    data.prevYear + '年' + data.prevMonth + '月'],
+      ['出力日時',    new Date()],
+      ['総停止件数',  (data.records || []).length]
+    ]);
+    meta.getRange(1, 1, 5, 1).setFontWeight('bold').setBackground('#f1f3f4');
+
+    // 停止設備集計
+    const eq = ss.insertSheet('停止設備別集計');
+    eq.getRange(1, 1, 1, 3).setValues([['停止設備', '今月(分)', '前月(分)']])
+      .setFontWeight('bold').setBackground('#f1f3f4');
+    if ((data.equipmentChart || []).length) {
+      eq.getRange(2, 1, data.equipmentChart.length, 3).setValues(
+        data.equipmentChart.map(it => [it.name, it.current, it.previous])
+      );
+    }
+    eq.setFrozenRows(1);
+
+    // 停止理由集計
+    const rs = ss.insertSheet('停止理由別集計');
+    rs.getRange(1, 1, 1, 3).setValues([['停止理由', '今月(分)', '前月(分)']])
+      .setFontWeight('bold').setBackground('#f1f3f4');
+    if ((data.reasonChart || []).length) {
+      rs.getRange(2, 1, data.reasonChart.length, 3).setValues(
+        data.reasonChart.map(it => [it.name, it.current, it.previous])
+      );
+    }
+    rs.setFrozenRows(1);
+
+    // 月内全停止記録
+    const rc = ss.insertSheet('月内全停止記録');
+    rc.getRange(1, 1, 1, 13).setValues([[
+      '月日', '商品', 'ストップ', 'スタート', '分', 'UF温度', 'TEA温度',
+      '停止設備', '停止理由', '対応内容', 'CR入室', '廃棄本数', '担当'
+    ]]).setFontWeight('bold').setBackground('#f1f3f4');
+    if ((data.records || []).length) {
+      const rows = data.records.map(r => {
+        const sd = r.stopAt ? new Date(r.stopAt) : null;
+        const ed = r.startAt ? new Date(r.startAt) : null;
+        return [
+          sd ? (sd.getMonth() + 1) + '/' + sd.getDate() : '',
+          r.productNickname || '',
+          sd ? Utilities.formatDate(sd, Session.getScriptTimeZone(), 'HH:mm') : '',
+          ed ? Utilities.formatDate(ed, Session.getScriptTimeZone(), 'HH:mm') : '',
+          r.minutes || 0,
+          r.ufTemp || '',
+          r.teaTemp || '',
+          r.equipment || '',
+          r.reason || '',
+          r.action || '',
+          r.crEntry || '',
+          r.wastage || 0,
+          r.charge || ''
+        ];
+      });
+      rc.getRange(2, 1, rows.length, 13).setValues(rows);
+    }
+    rc.setFrozenRows(1);
+
+    // 不要なシートを削除（最初のメタ情報以外、デフォルトの「シート1」が残らないように insertSheet で対応済み）
+
+    // EXPORT_FOLDER_ID が設定されていれば指定フォルダに移動
+    if (CONFIG.EXPORT_FOLDER_ID) {
+      try {
+        const file = DriveApp.getFileById(ss.getId());
+        const folder = DriveApp.getFolderById(CONFIG.EXPORT_FOLDER_ID);
+        file.moveTo(folder);
+      } catch (e) {
+        Logger.log('フォルダ移動失敗: ' + e.message);
+      }
+    }
+
+    return {
+      success: true,
+      url: ss.getUrl(),
+      fileId: ss.getId(),
+      fileName: name
+    };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+/**
  * 全てのサーバーサイドキャッシュ（部署/マスタ/商品）を強制的にクリアする
  * 手動更新ボタンから呼ばれる
  */
 function api_invalidateCaches() {
+  try {
+    const cache = CacheService.getScriptCache();
+    cache.remove(CONFIG.CACHE_KEY_DEPT);
+    cache.remove(CONFIG.CACHE_KEY_MASTERS);
+    cache.remove(CONFIG.CACHE_KEY_PRODUCT);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
   try {
     const cache = CacheService.getScriptCache();
     cache.remove(CONFIG.CACHE_KEY_DEPT);
