@@ -39,9 +39,6 @@ const CONFIG = {
   YEAR_RANGE: 1,            // 現在年 ± N
   CYCLES_PER_PAGE: 20,      // 一覧ページネーション
 
-  // 分析スプシ出力先フォルダ（空文字なら My Drive 直下、フォルダID を設定すればそこに保存）
-  EXPORT_FOLDER_ID: '',
-
   // キャッシュ秒数（Apps Script CacheService 最大値 = 21600秒 / 6時間）
   CACHE_DURATION_SEC: 21600,
   CACHE_KEY_DEPT:    'master_departments_v1',
@@ -1161,106 +1158,10 @@ function api_getAnalysis(payload) {
 }
 
 /**
- * 分析結果を新規スプレッドシートに書き出し
- * payload: { line, year, month }
- * 戻り値: { success, url, fileName }
- * 保存先: スクリプト実行者のマイドライブ直下（CONFIG.EXPORT_FOLDER_ID があればそこに移動）
- */
-function api_exportAnalysisToSheet(payload) {
-  const data = api_getAnalysis(payload);
-  if (!data.success) return data;
-
-  try {
-    const dateTag = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HH-mm');
-    const mm = String(data.month).padStart(2, '0');
-    const name = '停止記録一覧_' + data.line + '_' + data.year + '年' + mm + '月_' + dateTag;
-    const ss = SpreadsheetApp.create(name);
-
-    // 1シート完結: 分析画面下部の一覧と同じ13列
-    const sheet = ss.getActiveSheet();
-    sheet.setName(data.year + '年' + mm + '月');
-    sheet.getRange(1, 1, 1, 13).setValues([[
-      '月日', '商品', 'ストップ', 'スタート', '分', 'UF温度', 'TEA温度',
-      '停止設備', '停止理由', '対応内容', 'CR入室', '廃棄本数', '担当'
-    ]]).setFontWeight('bold').setBackground('#f1f3f4');
-    sheet.setFrozenRows(1);
-
-    const records = data.records || [];
-    if (records.length) {
-      const rows = records.map(r => {
-        const sd = r.stopAt ? new Date(r.stopAt) : null;
-        const ed = r.startAt ? new Date(r.startAt) : null;
-        return [
-          sd ? (sd.getMonth() + 1) + '/' + sd.getDate() : '',
-          r.productNickname || '',
-          sd ? Utilities.formatDate(sd, Session.getScriptTimeZone(), 'HH:mm') : '',
-          ed ? Utilities.formatDate(ed, Session.getScriptTimeZone(), 'HH:mm') : '',
-          r.minutes || 0,
-          r.ufTemp || '',
-          r.teaTemp || '',
-          r.equipment || '',
-          r.reason || '',
-          r.action || '',
-          r.crEntry || '',
-          r.wastage || 0,
-          r.charge || ''
-        ];
-      });
-      sheet.getRange(2, 1, rows.length, 13).setValues(rows);
-    }
-    sheet.autoResizeColumns(1, 13);
-
-    // EXPORT_FOLDER_ID が設定されていれば指定フォルダに移動
-    if (CONFIG.EXPORT_FOLDER_ID) {
-      try {
-        const file = DriveApp.getFileById(ss.getId());
-        const folder = DriveApp.getFolderById(CONFIG.EXPORT_FOLDER_ID);
-        file.moveTo(folder);
-      } catch (e) {
-        Logger.log('フォルダ移動失敗: ' + e.message);
-      }
-    }
-
-    // ログインユーザーにエディター権限を付与（「共有アイテム」から見える）
-    let sharedWith = '';
-    try {
-      const userEmail = Session.getActiveUser().getEmail();
-      if (userEmail) {
-        DriveApp.getFileById(ss.getId()).addEditor(userEmail);
-        sharedWith = userEmail;
-      }
-    } catch (e) {
-      Logger.log('共有失敗: ' + e.message);
-    }
-
-    return {
-      success: true,
-      url: ss.getUrl(),
-      fileId: ss.getId(),
-      fileName: name,
-      recordCount: records.length,
-      sharedWith: sharedWith
-    };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
-}
-
-/**
  * 全てのサーバーサイドキャッシュ（部署/マスタ/商品）を強制的にクリアする
  * 手動更新ボタンから呼ばれる
  */
 function api_invalidateCaches() {
-  try {
-    const cache = CacheService.getScriptCache();
-    cache.remove(CONFIG.CACHE_KEY_DEPT);
-    cache.remove(CONFIG.CACHE_KEY_MASTERS);
-    cache.remove(CONFIG.CACHE_KEY_PRODUCT);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
-}
   try {
     const cache = CacheService.getScriptCache();
     cache.remove(CONFIG.CACHE_KEY_DEPT);
