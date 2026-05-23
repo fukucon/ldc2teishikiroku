@@ -60,6 +60,29 @@
     font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace;
   }
 
+  /* ── 強制再取得ボタン ── */
+  .refresh-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--surface);
+    cursor: pointer; font-size: 16px; line-height: 1;
+    color: var(--text);
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .refresh-btn:hover { background: #f1f3f4; }
+  .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .refresh-btn.refreshing {
+    animation: refresh-spin 0.7s linear infinite;
+    color: var(--accent);
+  }
+  @keyframes refresh-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
   /* ── 接続状態インジケータ ── */
   .conn-status {
     display: inline-flex; align-items: center; gap: 6px;
@@ -447,6 +470,8 @@
       <span class="skeleton" style="width: 60px;"></span>
       <span class="skeleton" style="width: 120px;"></span>
     </div>
+    <button class="refresh-btn" id="refresh-btn" type="button"
+      onclick="manualRefresh()" title="サーバーキャッシュをクリアして再取得">↻</button>
     <div class="conn-status" id="conn-status" title="自動更新の状態">
       <span class="conn-dot"></span>
       <span id="conn-text">接続中…</span>
@@ -607,6 +632,22 @@ function pollUpdate() {
   }).catch(() => {
     // 失敗時は setOnlineStatus(false) が gas() 内で実行される
   });
+}
+
+// 手動更新: サーバーキャッシュをクリアしてから取得
+function manualRefresh() {
+  const btn = document.getElementById('refresh-btn');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.classList.add('refreshing');
+  gas('api_invalidateCaches')
+    .then(() => gas('api_getCycleDetail', CYCLE_ID))
+    .then(res => { if (res && res.success) softMerge(res); })
+    .catch(() => { /* setOnlineStatus(false) は gas() 内で実行 */ })
+    .finally(() => {
+      btn.disabled = false;
+      btn.classList.remove('refreshing');
+    });
 }
 
 // =====================================================

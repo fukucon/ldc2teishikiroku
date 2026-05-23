@@ -1034,6 +1034,22 @@ function _setLastProduct(line, productID) {
 }
 
 /**
+ * 全てのサーバーサイドキャッシュ（部署/マスタ/商品）を強制的にクリアする
+ * 手動更新ボタンから呼ばれる
+ */
+function api_invalidateCaches() {
+  try {
+    const cache = CacheService.getScriptCache();
+    cache.remove(CONFIG.CACHE_KEY_DEPT);
+    cache.remove(CONFIG.CACHE_KEY_MASTERS);
+    cache.remove(CONFIG.CACHE_KEY_PRODUCT);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+/**
  * ライン別最後に選択された商品ID を更新
  * payload: { line, productID }
  */
