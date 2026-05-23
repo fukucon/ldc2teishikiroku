@@ -91,19 +91,28 @@
 
   /* ── 強制再取得ボタン ── */
   .refresh-btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 32px; height: 32px;
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px;
+    padding: 0 12px;
     border: 1px solid var(--border);
-    border-radius: 50%;
+    border-radius: 999px;          /* ピル形状 */
     background: var(--surface);
-    cursor: pointer; font-size: 16px; line-height: 1;
+    cursor: pointer;
     color: var(--text);
-    padding: 0;
     flex-shrink: 0;
+    line-height: 1;
   }
   .refresh-btn:hover { background: #f1f3f4; }
   .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .refresh-btn.refreshing {
+  .refresh-label {
+    font-size: 13px; font-weight: 700;
+  }
+  .refresh-icon {
+    display: inline-block;
+    font-size: 16px; line-height: 1;
+  }
+  /* くるくる回るのは ↻ アイコンのみ */
+  .refresh-btn.refreshing .refresh-icon {
     animation: refresh-spin 0.7s linear infinite;
     color: var(--accent);
   }
@@ -500,7 +509,10 @@
       <span class="skeleton" style="width: 120px;"></span>
     </div>
     <button class="refresh-btn" id="refresh-btn" type="button"
-      onclick="manualRefresh()" title="サーバーキャッシュをクリアして再取得">↻</button>
+      onclick="manualRefresh()" title="サーバーキャッシュをクリアして再取得">
+      <span class="refresh-label">更新</span>
+      <span class="refresh-icon">↻</span>
+    </button>
     <div class="conn-status" id="conn-status" title="自動更新の状態">
       <span class="conn-dot"></span>
       <span id="conn-text">接続中…</span>
