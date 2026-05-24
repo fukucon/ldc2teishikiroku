@@ -31,7 +31,6 @@ function setupDatabase() {
   }
 
   // マスタ系シート（年シャーディングしない）
-  _ensureSheet(appSS, CONFIG.SHEET_SUMMARY,   SUMMARY_COLS);
   _ensureSheet(appSS, CONFIG.SHEET_EQUIPMENT, MASTER_FREE_COLS);
   _ensureSheet(appSS, CONFIG.SHEET_REASON,    MASTER_FREE_COLS);
   _ensureSheet(appSS, CONFIG.SHEET_ACTION,    MASTER_FREE_COLS);
@@ -157,6 +156,68 @@ function testConnection() {
   } catch (e) {
     Logger.log('アプリDB NG: ' + e.message);
   }
+}
+
+/**
+ * 既存の停止ログから 停止理由マスタ / 対応内容履歴 を再構築する
+ *   - 既存マスタに無い値は新規追加
+ *   - 既存マスタにある値は使用回数を加算
+ *   - 移行後の一括バンプ用途
+ */
+function rebuildReasonAndActionMasters() {
+  const ss = _appSS();
+  const reasonCounts = {}, actionCounts = {};
+
+  ss.getSheets().forEach(sh => {
+    const name = sh.getName();
+    if (name.indexOf(CONFIG.SHEET_PREFIX_LOG) !== 0) return;
+    if (sh.getLastRow() < 2) return;
+    const data = sh.getRange(2, 1, sh.getLastRow() - 1, LOG_COLS.length).getValues();
+    data.forEach(r => {
+      const reason = String(r[LC['停止理由']] || '').trim();
+      const action = String(r[LC['対応内容']] || '').trim();
+      if (reason) reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+      if (action) actionCounts[action] = (actionCounts[action] || 0) + 1;
+    });
+  });
+
+  const r = _mergeMasterCounts(CONFIG.SHEET_REASON, reasonCounts);
+  const a = _mergeMasterCounts(CONFIG.SHEET_ACTION, actionCounts);
+  try { CacheService.getScriptCache().remove(CONFIG.CACHE_KEY_MASTERS); } catch(e) {}
+
+  Logger.log('停止理由マスタ: ユニーク ' + Object.keys(reasonCounts).length +
+             ' / 新規追加 ' + r.added + ' / 既存に加算 ' + r.bumped);
+  Logger.log('対応内容履歴: ユニーク ' + Object.keys(actionCounts).length +
+             ' / 新規追加 ' + a.added + ' / 既存に加算 ' + a.bumped);
+}
+
+function _mergeMasterCounts(sheetName, counts) {
+  const sheet = _appSS().getSheetByName(sheetName);
+  if (!sheet) return { added: 0, bumped: 0, error: 'シート無し: ' + sheetName };
+  const now = new Date();
+  const existing = sheet.getLastRow() < 2
+    ? []
+    : sheet.getRange(2, 1, sheet.getLastRow() - 1, MASTER_FREE_COLS.length).getValues();
+  const indexMap = {};
+  existing.forEach((row, i) => { if (row[0]) indexMap[String(row[0])] = { row: i + 2, current: row }; });
+
+  const newRows = [];
+  let bumped = 0;
+  Object.keys(counts).forEach(value => {
+    const cnt = counts[value];
+    const ex = indexMap[value];
+    if (ex) {
+      sheet.getRange(ex.row, 2).setValue((ex.current[1] || 0) + cnt);
+      sheet.getRange(ex.row, 4).setValue(now);
+      bumped++;
+    } else {
+      newRows.push([value, cnt, now, now, true]);
+    }
+  });
+  if (newRows.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, MASTER_FREE_COLS.length).setValues(newRows);
+  }
+  return { added: newRows.length, bumped: bumped };
 }
 
 // =====================================================

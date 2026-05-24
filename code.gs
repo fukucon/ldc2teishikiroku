@@ -18,7 +18,6 @@ const CONFIG = {
   SHEET_PREFIX_LOG:    '停止ログ_',
 
   // 単一シート
-  SHEET_SUMMARY:    '日次サマリ',
   SHEET_EQUIPMENT:  '停止設備マスタ',
   SHEET_REASON:     '停止理由マスタ',
   SHEET_ACTION:     '対応内容履歴',
@@ -105,19 +104,6 @@ const LOG_COLS = [
 ];
 const LC = {};
 LOG_COLS.forEach((n, i) => LC[n] = i);
-
-// 日次サマリ（分析用、1日1ラインで1行）
-const SUMMARY_COLS = [
-  '集計日',
-  'ライン',
-  'サイクル数',
-  '停止回数',
-  '合計停止分',
-  '主要停止理由TOP1',
-  '主要停止理由TOP2',
-  '主要停止理由TOP3',
-  '更新日時'
-];
 
 // マスタ（自由入力 + 自動追加）
 const MASTER_FREE_COLS = ['内容', '使用回数', '初回追加日時', '最終使用日時', '有効'];
