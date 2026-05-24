@@ -1125,7 +1125,8 @@ function _validateCycleForConfirm(cycle, stopRecords) {
     if (!r.crEntry)            errs.push(tag + ': CR入室');
     if (r.ufTemp  === '' || r.ufTemp  == null) errs.push(tag + ': UF温度');
     if (r.teaTemp === '' || r.teaTemp == null) errs.push(tag + ': TEA温度');
-    if (String(r.equipment || '').indexOf('商品切替') !== -1 && !r.newProductID) {
+    const eqStr = String(r.equipment || '');
+    if ((eqStr.indexOf('品種切替') !== -1 || eqStr.indexOf('商品切替') !== -1) && !r.newProductID) {
       errs.push(tag + ': 商品切替の切替後商品');
     }
   });

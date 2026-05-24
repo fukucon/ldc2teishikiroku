@@ -1403,7 +1403,8 @@ function renderRecordList() {
     const monthOptsSel = monthOpts.replace(`value="${stopMonth}"`, `value="${stopMonth}" selected`);
     const dayOptsSel   = dayOpts.replace(`value="${stopDay}"`,     `value="${stopDay}" selected`);
     // 商品切替 判定 / この行の商品（切替後 or 前）
-    const isSwitch = String(r.equipment || '').indexOf('商品切替') !== -1;
+    const eqStr = String(r.equipment || '');
+    const isSwitch = eqStr.indexOf('品種切替') !== -1 || eqStr.indexOf('商品切替') !== -1;
     const beforeProductID = isSwitch ? computeProductAt(r.stopAt, false) : '';
     const beforeProductName = productName(beforeProductID);
     const switchProductOpts = isSwitch ? productOptionsHtml(lineProducts(), r.newProductID || '') : '';
