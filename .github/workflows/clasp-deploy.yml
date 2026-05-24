@@ -1,0 +1,63 @@
+name: Deploy to Apps Script
+
+# main / claude/** ブランチへの push、または手動実行で起動
+# .md / .github 配下 / ignore 系の変更だけならスキップ
+on:
+  push:
+    branches:
+      - main
+      - "claude/**"
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+      - '.gitignore'
+      - '.claspignore'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Write clasp credentials (~/.clasprc.json)
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "CLASPRC_JSON secret is empty"; exit 1
+          fi
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+          chmod 600 ~/.clasprc.json
+
+      - name: Write .clasp.json
+        env:
+          GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
+        run: |
+          if [ -z "$GAS_SCRIPT_ID" ]; then
+            echo "GAS_SCRIPT_ID secret is empty"; exit 1
+          fi
+          printf '{"scriptId":"%s","rootDir":"."}' "$GAS_SCRIPT_ID" > .clasp.json
+
+      - name: clasp status (確認)
+        run: clasp status
+
+      - name: clasp push
+        run: clasp push -f
+
+      - name: Save updated credentials back (refresh_token 更新を Secret に書き戻すヒント)
+        if: always()
+        run: |
+          echo "::group::Updated clasprc.json (refresh_token が更新されていれば Secret 更新を検討)"
+          # 中身は表示しない（機密）
+          ls -la ~/.clasprc.json
+          echo "::endgroup::"
