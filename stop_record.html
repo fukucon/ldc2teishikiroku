@@ -224,9 +224,13 @@
   .add-bar-inline input[type="time"] {
     width: 110px; min-width: 110px;   /* Safari 空欄時の縮みを防ぐ */
   }
-  .btn-add-small {
-    padding: 6px 14px; min-height: 36px;
-    font-size: 14px; font-weight: 700;
+  .add-bar-inline .btn-add-small {
+    padding: 3px 14px;
+    min-height: 28px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+    border-radius: 5px;
   }
   .add-bar-product {
     display: inline-flex; align-items: center; gap: 6px;
@@ -236,9 +240,30 @@
   .add-bar-product-label { font-size: 13px; font-weight: 700; color: var(--muted); }
   .add-bar-product select {
     font-size: 14px; font-weight: 700;
-    min-height: 36px; padding: 4px 6px;
+    min-height: 30px; padding: 4px 6px;
     border: 1px solid #d1d5db; border-radius: 5px;
     min-width: 110px;
+  }
+
+  /* ── 月日(紫) / 開始時刻(青) / 終了・停止時刻(赤) の色分け ── */
+  /* 月/日 セレクタは紫枠 */
+  #prod-end-month, #prod-end-day,
+  #stop-day-month, #stop-day-day,
+  .record-header .rec-stop-month, .record-header .rec-stop-day {
+    border-color: #a855f7;
+  }
+  /* 停止/終了系 時刻(時:分) は赤枠 */
+  #prod-end-hour, #prod-end-minute,
+  #stop-stop-hour, #stop-stop-minute,
+  .record-header [data-field="stopHour"],
+  .record-header [data-field="stopMinute"] {
+    border-color: #ef4444;
+  }
+  /* 開始/スタート系 時刻(時:分) は青枠 */
+  #prod-start-hour, #prod-start-minute,
+  .record-header [data-field="startHour"],
+  .record-header [data-field="startMinute"] {
+    border-color: #3b82f6;
   }
 
   /* 停止記録 各行 右端の商品バッジ */
@@ -609,12 +634,12 @@
         <span class="colon">:</span>
         <select id="stop-stop-minute"></select>
       </span>
-      <button class="btn-primary btn-add-small" id="stop-add-btn" onclick="addStopRecord()">追加</button>
       <span class="add-bar-product">
         <span class="add-bar-product-label">商品</span>
         <select id="cycle-product" onchange="saveCycleProduct()"></select>
         <span class="save-indicator" id="cycle-product-save"></span>
       </span>
+      <button class="btn-primary btn-add-small" id="stop-add-btn" onclick="addStopRecord()">追加</button>
     </div>
   </div>
   <div class="error-text" id="stop-error" style="display: none; padding: 0 14px 6px;"></div>
