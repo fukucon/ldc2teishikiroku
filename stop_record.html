@@ -579,14 +579,13 @@
     text-align: center; padding: 24px; color: var(--muted); font-size: 13px;
   }
 
-  /* UF温度 / TEA温度 / 廃棄本数 入力は固定幅 */
+  /* UF温度 / TEA温度 入力は固定幅で左に詰める */
   .record-fields-grid input[data-field="ufTemp"],
-  .record-fields-grid input[data-field="teaTemp"],
-  .record-fields-grid input[data-field="wastage"] {
+  .record-fields-grid input[data-field="teaTemp"] {
     width: 70px; flex: 0 0 70px;
   }
 
-  /* Row 2: 4-col gridでなく flex（UF/TEA/CR/廃棄 を左に詰め、削除ボタンは右端） */
+  /* Row 2: 4-col gridでなく flex（UF/TEAは固定幅、CR/廃棄は1fr相当、削除ボタンは右端） */
   .record-row-2 {
     display: flex !important;
     align-items: flex-end;
@@ -596,6 +595,12 @@
   .record-row-2 > div {
     display: flex; flex-direction: column;
     flex: 0 0 auto;
+  }
+  /* CR入室セル + 廃棄本数セル は伸びる（停止理由などと同程度の幅に） */
+  .record-row-2 > div:has(.radio-group),
+  .record-row-2 > div:has(input[data-field="wastage"]) {
+    flex: 1 1 180px;
+    max-width: 240px;
   }
 
   /* 削除ボタン: row 2 の右端に align（担当の下の右に揃う） */
