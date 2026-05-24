@@ -739,6 +739,15 @@
 <datalist id="equipment-list"></datalist>
 <datalist id="reason-list"></datalist>
 <datalist id="action-list"></datalist>
+<datalist id="uf-temp-list">
+  <option value="50"><option value="51"><option value="52"><option value="53"><option value="54"><option value="55"><option value="56"><option value="57"><option value="58"><option value="59"><option value="60">
+</datalist>
+<datalist id="tea-temp-list">
+  <option value="82"><option value="83"><option value="84"><option value="85"><option value="86"><option value="87"><option value="88"><option value="89"><option value="90"><option value="91"><option value="92">
+</datalist>
+<datalist id="filler-temp-500-list">
+  <option value="30"><option value="31"><option value="32"><option value="33"><option value="34"><option value="35"><option value="36"><option value="37"><option value="38"><option value="39"><option value="40">
+</datalist>
 
 <main>
   <!-- 停止記録一覧 -->
@@ -1626,6 +1635,7 @@ function renderRecordList() {
             <div class="field-label">${is500ml ? 'フィラー温度' : 'UF温度'}</div>
             <div class="field-input-wrap">
               <input type="number" class="record-field" step="0.1"
+                list="${is500ml ? 'filler-temp-500-list' : 'uf-temp-list'}"
                 data-log-id="${lid}" data-field="ufTemp"
                 value="${r.ufTemp || ''}"
                 onblur="saveRecordField('${lid}', 'ufTemp', this.value)">
@@ -1637,6 +1647,7 @@ function renderRecordList() {
             <div class="field-label">TEA温度</div>
             <div class="field-input-wrap">
               <input type="number" class="record-field" step="0.1"
+                list="tea-temp-list"
                 data-log-id="${lid}" data-field="teaTemp"
                 value="${r.teaTemp || ''}"
                 onblur="saveRecordField('${lid}', 'teaTemp', this.value)">
