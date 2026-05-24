@@ -174,10 +174,16 @@ function rebuildReasonAndActionMasters() {
     if (sh.getLastRow() < 2) return;
     const data = sh.getRange(2, 1, sh.getLastRow() - 1, LOG_COLS.length).getValues();
     data.forEach(r => {
+      const equip  = String(r[LC['停止設備']] || '').trim();
       const reason = String(r[LC['停止理由']] || '').trim();
       const action = String(r[LC['対応内容']] || '').trim();
+      // 停止設備 or 停止理由 に「品種切替」「商品切替」が含まれる行 = 商品切替stop
+      // → 対応内容は商品名遷移文字列 ("X→Y" 等) なのでマスタに入れない
+      const isSwitch =
+        equip.indexOf('品種切替')  !== -1 || equip.indexOf('商品切替')  !== -1 ||
+        reason.indexOf('品種切替') !== -1 || reason.indexOf('商品切替') !== -1;
       if (reason) reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
-      if (action) actionCounts[action] = (actionCounts[action] || 0) + 1;
+      if (action && !isSwitch) actionCounts[action] = (actionCounts[action] || 0) + 1;
     });
   });
 
@@ -188,7 +194,8 @@ function rebuildReasonAndActionMasters() {
   Logger.log('停止理由マスタ: ユニーク ' + Object.keys(reasonCounts).length +
              ' / 新規追加 ' + r.added + ' / 既存に加算 ' + r.bumped);
   Logger.log('対応内容履歴: ユニーク ' + Object.keys(actionCounts).length +
-             ' / 新規追加 ' + a.added + ' / 既存に加算 ' + a.bumped);
+             ' / 新規追加 ' + a.added + ' / 既存に加算 ' + a.bumped +
+             ' (商品切替stopは除外)');
 }
 
 function _mergeMasterCounts(sheetName, counts) {
