@@ -27,7 +27,7 @@ const CONFIG = {
   MASTER_DEPT:        '部署マスタ',
   MASTER_STAFF:       '社員名簿',
   MASTER_PRODUCT:     '商品マスター',
-  MASTER_PERMISSIONS: '権限マスタ',     // A:氏名 / B:メール / C:権限レベル(一般/リーダー/全権)
+  MASTER_PERMISSIONS: '管理者名簿',     // A:氏名 / B:メール / C:権限レベル(一般/リーダー/全権)
 
   // ラインマスタ（ハードコード）
   // key: 内部識別子、prefix: サイクルIDの接頭辞
