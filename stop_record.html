@@ -485,10 +485,23 @@
   .record-header .rec-stop-month,
   .record-header .rec-stop-day {
     font-size: 13px; font-weight: 700;
-    width: 50px; min-width: 50px;
-    min-height: 30px; padding: 2px 4px;
+    width: 42px; min-width: 42px;
+    min-height: 30px; padding: 2px 2px;
     border: 1px solid #d1d5db; border-radius: 5px;
     text-align: center;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: none;
+  }
+  /* 停止記録カード内の time-pair も ▼ を非表示にして詰める */
+  .record-header .time-pair > select {
+    width: 44px; min-width: 44px;
+    padding: 2px 2px;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: none;
   }
   .record-header .rec-stop-slash {
     color: var(--muted); font-weight: 700;
