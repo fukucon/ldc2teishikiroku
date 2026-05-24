@@ -1347,6 +1347,7 @@ function api_getAnalysis(payload) {
     equipmentChart: build(aggregate(curLogs, 'equipment'), aggregate(prvLogs, 'equipment')),
     reasonChart:    build(aggregate(curLogs, 'reason'),    aggregate(prvLogs, 'reason')),
     records: curLogs.map(l => ({
+      cycleID: l.cycleID,
       stopAt: _toIso(l.stopAt),
       startAt: _toIso(l.startAt),
       minutes: l.minutes,

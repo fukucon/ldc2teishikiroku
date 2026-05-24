@@ -32,8 +32,21 @@
   }
   header h1 { margin: 0; font-size: 18px; font-weight: 800; }
   .back-link {
-    color: var(--accent); text-decoration: none; font-size: 14px; font-weight: 700;
+    display: inline-flex; align-items: center;
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--accent);
+    font-size: 13px; font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    line-height: 1;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
+  .back-link:hover { background: #eff6ff; }
   main { padding: 14px; max-width: 1280px; margin: 0 auto; }
 
   .controls {
@@ -166,7 +179,7 @@
 <body>
 
 <header>
-  <a class="back-link" href="<?= appUrl ?>">← 一覧</a>
+  <a class="back-link" href="<?= appUrl ?>">日報の一覧へ</a>
   <h1>分析ページ</h1>
 </header>
 
@@ -418,12 +431,13 @@ function exportToCsv() {
   const loaded = STATE.loaded;
   if (!loaded || !loaded.records || !loaded.records.length) return;
 
-  const headers = ['月日', '商品', 'ストップ', 'スタート', '分', 'UF温度', 'TEA温度',
+  const headers = ['サイクルID', '月日', '商品', 'ストップ', 'スタート', '分', 'UF温度', 'TEA温度',
                    '停止設備', '停止理由', '対応内容', 'CR入室', '廃棄本数', '担当'];
   const rows = loaded.records.map(r => {
     const sd = r.stopAt ? new Date(r.stopAt) : null;
     const ed = r.startAt ? new Date(r.startAt) : null;
     return [
+      r.cycleID || '',
       sd ? (sd.getMonth()+1) + '/' + sd.getDate() : '',
       r.productNickname || '',
       sd ? pad(sd.getHours()) + ':' + pad(sd.getMinutes()) : '',
