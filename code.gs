@@ -24,9 +24,10 @@ const CONFIG = {
   SHEET_ACTION:     '対応内容履歴',
 
   // 共通マスタースプシ内
-  MASTER_DEPT:    '部署マスタ',
-  MASTER_STAFF:   '社員名簿',
-  MASTER_PRODUCT: '商品マスター',
+  MASTER_DEPT:        '部署マスタ',
+  MASTER_STAFF:       '社員名簿',
+  MASTER_PRODUCT:     '商品マスター',
+  MASTER_PERMISSIONS: '権限マスタ',     // A:氏名 / B:メール / C:権限レベル(一般/リーダー/全権)
 
   // ラインマスタ（ハードコード）
   // key: 内部識別子、prefix: サイクルIDの接頭辞
@@ -41,9 +42,10 @@ const CONFIG = {
 
   // キャッシュ秒数（Apps Script CacheService 最大値 = 21600秒 / 6時間）
   CACHE_DURATION_SEC: 21600,
-  CACHE_KEY_DEPT:    'master_departments_v1',
-  CACHE_KEY_MASTERS: 'master_freelist_v1',
-  CACHE_KEY_PRODUCT: 'master_products_v1'
+  CACHE_KEY_DEPT:        'master_departments_v1',
+  CACHE_KEY_MASTERS:     'master_freelist_v1',
+  CACHE_KEY_PRODUCT:     'master_products_v1',
+  CACHE_KEY_PERMISSIONS: 'master_permissions_v1'
 };
 
 // ─────────────────────────────────────
@@ -169,7 +171,8 @@ function api_initialLoad(line) {
     products: _getProducts(),
     lastProducts: _getLastProducts(),
     cycles: _getCycles({ year: year, line: line, limit: CONFIG.CYCLES_PER_PAGE }),
-    userEmail: _activeUserEmail()
+    userEmail: _activeUserEmail(),
+    canEditConfirmed: _isCurrentUserLeaderOrAbove()
   };
 }
 
@@ -299,7 +302,8 @@ function api_getCycleDetail(cycleID) {
     masters: _getMasters(),
     products: _getProducts(),
     lastProducts: _getLastProducts(),
-    userEmail: _activeUserEmail()
+    userEmail: _activeUserEmail(),
+    canEditConfirmed: _isCurrentUserLeaderOrAbove()
   };
 }
 
@@ -311,6 +315,8 @@ function api_updateCycleField(payload) {
   const field = payload.field;        // 'productionStartAt' | 'productionEndAt' | 'notes'
   const value = payload.value;
 
+  const editCheck = _checkEditable(cycleID);
+  if (!editCheck.ok) return { success: false, error: editCheck.error };
 
   const fieldMap = {
     'productionStartAt': '製造開始日時',
@@ -377,6 +383,8 @@ function api_addStopRecord(payload) {
     return { success: false, error: 'cycleID, ストップ日時 は必須です' };
   }
 
+  const editCheck = _checkEditable(cycleID);
+  if (!editCheck.ok) return { success: false, error: editCheck.error };
 
   const year = _yearFromCycleID(cycleID);
   if (!year) return { success: false, error: 'サイクルIDからの年抽出失敗: ' + cycleID };
@@ -446,6 +454,8 @@ function api_updateStopRecordEnd(payload) {
 
   const cycleID = _cycleFromLogID(logID);
   if (!cycleID) return { success: false, error: 'logIDからの親特定失敗: ' + logID };
+  const editCheck = _checkEditable(cycleID);
+  if (!editCheck.ok) return { success: false, error: editCheck.error };
   const year = _yearFromCycleID(cycleID);
   if (!year) return { success: false, error: '年抽出失敗' };
 
@@ -513,6 +523,8 @@ function api_updateStopRecordStop(payload) {
 
   const cycleID = _cycleFromLogID(logID);
   if (!cycleID) return { success: false, error: 'logIDからの親特定失敗: ' + logID };
+  const editCheck = _checkEditable(cycleID);
+  if (!editCheck.ok) return { success: false, error: editCheck.error };
   const year = _yearFromCycleID(cycleID);
   if (!year) return { success: false, error: '年抽出失敗' };
 
@@ -580,6 +592,8 @@ function api_updateStopRecordFields(payload) {
 
   const cycleID = _cycleFromLogID(logID);
   if (!cycleID) return { success: false, error: 'logIDからの親特定失敗: ' + logID };
+  const editCheck = _checkEditable(cycleID);
+  if (!editCheck.ok) return { success: false, error: editCheck.error };
   const year = _yearFromCycleID(cycleID);
   if (!year) return { success: false, error: '年抽出失敗' };
 
@@ -1028,6 +1042,72 @@ function _activeUserEmail() {
 }
 
 /**
+ * 権限マスタ取得（共通スプシの「権限マスタ」シート）
+ *   A: 氏名 / B: メール / C: 権限レベル（一般 / リーダー / 全権）
+ *   キャッシュ: CACHE_KEY_PERMISSIONS
+ */
+function _getPermissions() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(CONFIG.CACHE_KEY_PERMISSIONS);
+  if (cached) return JSON.parse(cached);
+
+  const list = [];
+  try {
+    const sheet = _masterSS().getSheetByName(CONFIG.MASTER_PERMISSIONS);
+    if (sheet && sheet.getLastRow() >= 2) {
+      const cols = Math.min(3, sheet.getLastColumn());
+      const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
+      rows.forEach(r => {
+        if (!r[1]) return;
+        list.push({
+          name:  String(r[0] || ''),
+          email: String(r[1]).toLowerCase().trim(),
+          level: String(r[2] || '').trim()
+        });
+      });
+    }
+  } catch (e) {
+    Logger.log('_getPermissions エラー: ' + e.message);
+  }
+  cache.put(CONFIG.CACHE_KEY_PERMISSIONS, JSON.stringify(list), CONFIG.CACHE_DURATION_SEC);
+  return list;
+}
+
+// 「リーダー以上」= 権限レベル が "リーダー" または "全権"
+function _isLeaderOrAbove(email) {
+  if (!email) return false;
+  const e = String(email).toLowerCase().trim();
+  const rec = _getPermissions().find(p => p.email === e);
+  if (!rec) return false;
+  return rec.level === 'リーダー' || rec.level === '全権';
+}
+function _isCurrentUserLeaderOrAbove() {
+  return _isLeaderOrAbove(_activeUserEmail());
+}
+
+/**
+ * サイクルが確定済みかつ現ユーザーが「リーダー以上」でないなら編集を拒否
+ */
+function _checkEditable(cycleID) {
+  const year = _yearFromCycleID(cycleID);
+  if (!year) return { ok: false, error: '年抽出失敗' };
+  const sheet = _getYearlySheet(CONFIG.SHEET_PREFIX_HEADER + year);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'サイクル行が見つかりません' };
+  const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (ids[i][0] === cycleID) {
+      const row = i + 2;
+      const confirmedAt = sheet.getRange(row, HC['確定日時'] + 1).getValue();
+      if (confirmedAt && !_isCurrentUserLeaderOrAbove()) {
+        return { ok: false, error: 'この日報は確定済みです。編集にはリーダー以上の権限が必要です。' };
+      }
+      return { ok: true, row: row, sheet: sheet };
+    }
+  }
+  return { ok: false, error: 'サイクル行が見つかりません: ' + cycleID };
+}
+
+/**
  * 確定用バリデーション: 全フィールド埋まりチェック
  */
 function _formatStopTimeTag(isoStr) {
@@ -1099,6 +1179,35 @@ function api_confirmCycle(payload) {
       }
     }
     return { success: false, error: 'サイクル行が見つかりません: ' + cycleID };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 日報の確定を解除（リーダー以上のみ）
+ */
+function api_unconfirmCycle(payload) {
+  if (!_isCurrentUserLeaderOrAbove()) return { success: false, error: 'リーダー以上の権限が必要です' };
+  const cycleID = payload && payload.cycleID;
+  if (!cycleID) return { success: false, error: 'cycleID は必須です' };
+  const year = _yearFromCycleID(cycleID);
+  const sheet = _getYearlySheet(CONFIG.SHEET_PREFIX_HEADER + year);
+  if (!sheet) return { success: false, error: 'サイクル年シートがありません' };
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i][0] === cycleID) {
+        const row = i + 2;
+        sheet.getRange(row, HC['確定日時']     + 1).setValue('');
+        sheet.getRange(row, HC['確定者メール'] + 1).setValue('');
+        sheet.getRange(row, HC['最終更新']     + 1).setValue(new Date());
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'サイクル行が見つかりません' };
   } finally {
     lock.releaseLock();
   }
@@ -1265,6 +1374,8 @@ function api_deleteStopRecord(payload) {
 
   const cycleID = _cycleFromLogID(logID);
   if (!cycleID) return { success: false, error: 'logIDからの親特定失敗: ' + logID };
+  const editCheck = _checkEditable(cycleID);
+  if (!editCheck.ok) return { success: false, error: editCheck.error };
 
   const year = _yearFromCycleID(cycleID);
   const sheet = _getYearlySheet(CONFIG.SHEET_PREFIX_LOG + year);
@@ -1303,6 +1414,7 @@ function api_invalidateCaches() {
     cache.remove(CONFIG.CACHE_KEY_DEPT);
     cache.remove(CONFIG.CACHE_KEY_MASTERS);
     cache.remove(CONFIG.CACHE_KEY_PRODUCT);
+    cache.remove(CONFIG.CACHE_KEY_PERMISSIONS);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };

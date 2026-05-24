@@ -109,6 +109,36 @@
     border: 1px solid #6ee7b7;
     white-space: nowrap;
   }
+  .btn-unconfirm {
+    background: var(--surface); color: var(--error); border: 1px solid var(--error);
+    padding: 4px 10px; border-radius: 6px;
+    font-size: 11px; font-weight: 700; cursor: pointer;
+  }
+  /* 読み取り専用バナー（確定済 + リーダー以上でない時のみ表示） */
+  .readonly-banner {
+    background: #fef3c7; color: #92400e;
+    padding: 8px 14px; font-size: 13px; font-weight: 700;
+    text-align: center;
+    border-bottom: 1px solid #fcd34d;
+    position: sticky; top: 0; z-index: 9;
+  }
+  body.cycle-readonly input,
+  body.cycle-readonly select,
+  body.cycle-readonly textarea {
+    pointer-events: none;
+    background: #f9fafb !important;
+    color: #6b7280 !important;
+  }
+  body.cycle-readonly .radio-option,
+  body.cycle-readonly .btn-primary,
+  body.cycle-readonly .btn-add-small,
+  body.cycle-readonly .record-delete-btn {
+    pointer-events: none;
+    opacity: 0.45;
+  }
+  body.cycle-readonly .add-bar-inline {
+    opacity: 0.7;
+  }
 
   /* ── 一覧に戻るボタン ── */
   .back-btn {
@@ -549,25 +579,29 @@
     text-align: center; padding: 24px; color: var(--muted); font-size: 13px;
   }
 
-  /* UF温度 / TEA温度 入力は半分の幅 */
+  /* UF温度 / TEA温度 / 廃棄本数 入力は固定幅 */
   .record-fields-grid input[data-field="ufTemp"],
-  .record-fields-grid input[data-field="teaTemp"] {
-    max-width: 70px;
-    flex: 0 0 70px;
+  .record-fields-grid input[data-field="teaTemp"],
+  .record-fields-grid input[data-field="wastage"] {
+    width: 70px; flex: 0 0 70px;
   }
 
-  /* 削除ボタン (各カード行2の右端) */
-  .record-body {
-    display: flex;
-    align-items: stretch;
+  /* Row 2: 4-col gridでなく flex（UF/TEA/CR/廃棄 を左に詰め、削除ボタンは右端） */
+  .record-row-2 {
+    display: flex !important;
+    align-items: flex-end;
     gap: 8px;
+    flex-wrap: wrap;
   }
-  .record-body > .record-fields-grid {
-    flex: 1; min-width: 0;
+  .record-row-2 > div {
+    display: flex; flex-direction: column;
+    flex: 0 0 auto;
   }
+
+  /* 削除ボタン: row 2 の右端に align（担当の下の右に揃う） */
   .record-delete-btn {
-    flex-shrink: 0;
     align-self: flex-end;
+    margin-left: auto;
     padding: 4px 12px;
     border: 1px solid #dc2626;
     background: #fff;
@@ -578,14 +612,6 @@
     white-space: nowrap;
   }
   .record-delete-btn:hover { background: #fef2f2; }
-  @media (max-width: 700px) {
-    .record-body { display: block; }
-    .record-delete-btn {
-      display: block;
-      width: 100%;
-      margin: 8px 0 0;
-    }
-  }
 
   /* モーダル: 危険操作用ボタン */
   .btn-danger {
@@ -698,6 +724,11 @@
   <div class="error-text" id="stop-error" style="display: none; padding: 0 14px 6px;"></div>
 </header>
 
+<!-- 読み取り専用バナー（確定済 + リーダー以上でないユーザー時のみ表示） -->
+<div class="readonly-banner" id="readonly-banner" style="display: none;">
+  📌 この日報は確定済みです。編集にはリーダー以上の権限が必要です。
+</div>
+
 
 <!-- datalist（ページ全体で共有） -->
 <datalist id="equipment-list"></datalist>
@@ -739,8 +770,9 @@ const STATE = {
   stopRecords: [],
   masters: null,
   products: [],
-  lastProducts: {},  // { '2L': 'P001', '500ml': 'P004' }
-  userEmail: ''
+  lastProducts: {},      // { '2L': 'P001', '500ml': 'P004' }
+  userEmail: '',
+  canEditConfirmed: false   // リーダー以上ならtrue
 };
 
 // +停止 バーの 月/日/時/分 をユーザーが手動で変えたか
@@ -991,6 +1023,7 @@ function softMerge(detail) {
   // 商品セレクタを更新（停止記録ごとの商品バッジは renderRecordList で更新）
   if (detail.lastProducts) STATE.lastProducts = detail.lastProducts;
   if ('userEmail' in detail) STATE.userEmail = detail.userEmail || '';
+  if ('canEditConfirmed' in detail) STATE.canEditConfirmed = !!detail.canEditConfirmed;
   populateCycleProductSelect();
   updateConfirmUI();
 }
@@ -1026,6 +1059,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     if (res.lastProducts) STATE.lastProducts = res.lastProducts;
     STATE.userEmail = res.userEmail || '';
+    STATE.canEditConfirmed = !!res.canEditConfirmed;
     renderAll();
     startAutoRefresh();
     startWakeLock();
@@ -1397,20 +1431,33 @@ function saveCycleProduct() {
 }
 
 // =====================================================
-//  日報確定 (権限管理シート未整備のため、編集ロックは無し)
+//  日報確定 / 確定解除
+//   - 誰でも確定できる
+//   - 確定済 + 権限マスタの「リーダー」「全権」のみ編集 / 解除可能
+//   - それ以外は読み取り専用
 // =====================================================
 function updateConfirmUI() {
   const c = STATE.cycle;
   const area = document.getElementById('confirm-area');
+  const banner = document.getElementById('readonly-banner');
   if (!c || !area) return;
   const isConfirmed = !!c.confirmedAt;
+  const readonly = isConfirmed && !STATE.canEditConfirmed;
+
+  document.body.classList.toggle('cycle-readonly', readonly);
+  if (banner) banner.style.display = readonly ? '' : 'none';
+
   if (!isConfirmed) {
     area.innerHTML = '<button class="btn-confirm" onclick="confirmCycle()">日報を確定</button>';
   } else {
     const dt = new Date(c.confirmedAt);
     const ds = (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + hhmmFromDate(dt);
     const by = c.confirmedBy || '';
-    area.innerHTML = '<span class="confirm-badge" title="' + escapeAttr(by) + '">✓ 確定済 ' + ds + '</span>';
+    const badge = '<span class="confirm-badge" title="' + escapeAttr(by) + '">✓ 確定済 ' + ds + '</span>';
+    const unconfirmBtn = STATE.canEditConfirmed
+      ? '<button class="btn-unconfirm" onclick="unconfirmCycle()">解除</button>'
+      : '';
+    area.innerHTML = badge + unconfirmBtn;
   }
 }
 
@@ -1429,6 +1476,22 @@ function confirmCycle() {
     updateConfirmUI();
     showModal('日報を確定しました。', '✓');
   }).catch(err => showModal('通信エラー: ' + (err.message || err), '⚠'));
+}
+
+function unconfirmCycle() {
+  if (!STATE.cycle) return;
+  showModal('この日報の確定を解除します。\nよろしいですか？', {
+    icon: '⚠', danger: true,
+    confirmLabel: '解除する', cancelLabel: 'キャンセル',
+    confirm: () => {
+      gas('api_unconfirmCycle', { cycleID: STATE.cycle.cycleID }).then(res => {
+        if (!res.success) { showModal(res.error || '解除失敗', '⚠'); return; }
+        STATE.cycle.confirmedAt = '';
+        STATE.cycle.confirmedBy = '';
+        updateConfirmUI();
+      }).catch(err => showModal('通信エラー: ' + (err.message || err), '⚠'));
+    }
+  });
 }
 
 // =====================================================
@@ -1508,8 +1571,7 @@ function renderRecordList() {
           <span class="record-minutes ${hasStart ? '' : 'pending'}" data-min="${lid}">${minutesStr}</span>
           ${productCell}
         </div>
-        <div class="record-body">
-        <div class="record-fields-grid">
+        <div class="record-fields-grid record-row-1">
           <div>
             <div class="field-label">停止設備</div>
             <div class="field-input-wrap">
@@ -1553,6 +1615,8 @@ function renderRecordList() {
               <span class="rec-ind" data-ind="${lid}-charge"></span>
             </div>
           </div>
+        </div>
+        <div class="record-fields-grid record-row-2">
           <div>
             <div class="field-label">${is500ml ? 'フィラー温度' : 'UF温度'}</div>
             <div class="field-input-wrap">
@@ -1594,8 +1658,7 @@ function renderRecordList() {
               <span class="rec-ind" data-ind="${lid}-wastage"></span>
             </div>
           </div>
-        </div>
-        <button class="record-delete-btn" onclick="confirmDeleteRecord('${lid}')">削除</button>
+          <button class="record-delete-btn" onclick="confirmDeleteRecord('${lid}')">削除</button>
         </div>
       </div>`;
   }).join('');
