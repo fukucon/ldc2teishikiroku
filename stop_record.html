@@ -140,6 +140,23 @@
     opacity: 0.7;
   }
 
+  /* ── 一覧に戻るボタン ── */
+  .back-btn {
+    display: inline-flex; align-items: center;
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--accent);
+    font-size: 13px; font-weight: 700;
+    cursor: pointer;
+    line-height: 1;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .back-btn:hover { background: #eff6ff; }
+
   /* ── 強制再取得ボタン ── */
   .refresh-btn {
     display: inline-flex; align-items: center; gap: 6px;
@@ -649,6 +666,7 @@
 
 <header>
   <div class="top-row">
+    <button class="back-btn" type="button" onclick="goBack()" title="日報一覧に戻る">一覧に戻る</button>
     <div class="cycle-title" id="cycle-title">
       <span class="skeleton" style="width: 60px;"></span>
       <span class="skeleton" style="width: 120px;"></span>

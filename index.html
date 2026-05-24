@@ -580,7 +580,7 @@ function renderCycleCard(c) {
     <div class="cycle-card" onclick="openCycle('${c.cycleID}')">
       <div class="cycle-date">${dateLabel}</div>
       <div class="cycle-info">
-        <div class="cycle-id">${c.cycleID}${versionBadge}${statusBadge}</div>
+        ${(versionBadge || statusBadge) ? `<div class="cycle-id">${versionBadge}${statusBadge}</div>` : ''}
         <div class="cycle-meta">
           <span class="cycle-times">${timesLine}</span>
           <span class="cycle-stats">
