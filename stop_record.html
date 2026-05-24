@@ -699,6 +699,9 @@ const STATE = {
   isLeader: false
 };
 
+// +停止 バーの 月/日/時/分 をユーザーが手動で変えたか
+let stopTimeManual = false;
+
 // localStorage キャッシュ（マスタ・商品）
 const MASTERS_LS_KEY  = 'cached_masters_v1';
 const PRODUCTS_LS_KEY = 'cached_products_v1';
@@ -946,8 +949,12 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!document.hidden) {
       pollUpdate();
       acquireWakeLock();
+      tickStopTimeNow();
     }
   });
+
+  // +停止 バーの月日時分を 30秒ごとに現在時刻に追従（マニュアル編集中はスキップ）
+  setInterval(tickStopTimeNow, 30 * 1000);
 
   // 入力中はインジケータをグレーに戻す（青→グレー→保存時に黄→青）
   document.addEventListener('input', (e) => {
@@ -1118,10 +1125,40 @@ function setSaveIndicator(id, state) {
 //  停止記録 追加フォーム（Step 1）
 // =====================================================
 function initStopForm() {
-  const today = new Date();
-  buildSelect('stop-day-month', range(1, 12), today.getMonth() + 1);
-  buildSelect('stop-day-day',   range(1, 31), today.getDate());
-  setTimePair('stop-stop-hour', 'stop-stop-minute', '', true);
+  const now = new Date();
+  buildSelect('stop-day-month', range(1, 12), now.getMonth() + 1);
+  buildSelect('stop-day-day',   range(1, 31), now.getDate());
+  setTimePair('stop-stop-hour', 'stop-stop-minute',
+    String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'),
+    false);
+  stopTimeManual = false;
+
+  // 追加バーの 月/日/時/分 を「触ったらマニュアル」と検出
+  ['stop-day-month', 'stop-day-day', 'stop-stop-hour', 'stop-stop-minute'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el._tagged) {
+      el.addEventListener('change', () => { stopTimeManual = true; });
+      el._tagged = true;
+    }
+  });
+}
+
+// 30秒ごとに +停止 の現在日時を更新（マニュアル編集中・読み取り専用時はスキップ）
+function tickStopTimeNow() {
+  if (stopTimeManual) return;
+  if (document.body.classList.contains('cycle-readonly')) return;
+  const ae = document.activeElement;
+  const ids = ['stop-day-month', 'stop-day-day', 'stop-stop-hour', 'stop-stop-minute'];
+  if (ids.some(id => ae === document.getElementById(id))) return;
+  const now = new Date();
+  const setIfExists = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.value = v;
+  };
+  setIfExists('stop-day-month',  now.getMonth() + 1);
+  setIfExists('stop-day-day',    now.getDate());
+  setIfExists('stop-stop-hour',  now.getHours());
+  setIfExists('stop-stop-minute', now.getMinutes());
 }
 
 function addStopRecord() {
@@ -1167,7 +1204,9 @@ function addStopRecord() {
       errEl.style.display = 'block';
       return;
     }
-    setTimePair('stop-stop-hour', 'stop-stop-minute', '', true);
+    // 追加成功 → マニュアルフラグ解除 + 現在時刻に再設定
+    stopTimeManual = false;
+    tickStopTimeNow();
     return gas('api_getCycleDetail', STATE.cycle.cycleID).then(detail => {
       if (detail.success) {
         STATE.cycle = detail.cycle;
