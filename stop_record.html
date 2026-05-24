@@ -224,6 +224,11 @@
   .add-bar-inline input[type="time"] {
     width: 110px; min-width: 110px;   /* Safari 空欄時の縮みを防ぐ */
   }
+  /* ＋停止 内の time-pair select も日付セレクタと同じ高さに揃える */
+  .add-bar-inline .time-pair > select {
+    min-height: 36px;
+    padding: 4px 6px;
+  }
   .add-bar-inline .btn-add-small {
     padding: 3px 14px;
     min-height: 28px;
@@ -383,14 +388,13 @@
   }
   .prod-group {
     display: flex; align-items: center; gap: 6px;
-    padding: 4px 10px;
-    border: 2px solid;
-    border-radius: 0;            /* 角が角 */
-    background: var(--surface);
+    padding: 0;
+    border: none;            /* 外枠（角が角の青/赤の囲み）を撤去 */
+    background: transparent;
     flex-shrink: 0;
   }
-  .prod-group.prod-start { border-color: #3b82f6; }
-  .prod-group.prod-end   { border-color: #ef4444; }
+  .prod-group.prod-start { /* 外枠は無し、ラベルだけ青 */ }
+  .prod-group.prod-end   { /* 外枠は無し、ラベルだけ赤 */ }
   .prod-label { font-weight: 700; font-size: 15px; flex-shrink: 0; }
   .prod-group.prod-start .prod-label { color: #1d4ed8; }
   .prod-group.prod-end   .prod-label { color: #b91c1c; }
