@@ -1,0 +1,14 @@
+# 各自のローカル設定（自分の Script ID が入る）
+.clasp.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# clasp の auth は通常 ~/.clasprc.json に保存される（ローカルに置かないこと）
+.clasprc.json

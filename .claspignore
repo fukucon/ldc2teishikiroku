@@ -1,0 +1,23 @@
+# clasp push 時に GAS にアップロードしないファイル
+# 詳しくは https://github.com/google/clasp#ignore-file-claspignore
+
+# Git 管理ファイル
+.git/**
+.gitignore
+.claspignore
+.clasp.json
+
+# ドキュメント (GAS に置く必要なし)
+README.md
+*.md
+docs/**
+
+# OS 系
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Node / 開発用
+node_modules/**
+package.json
+package-lock.json
