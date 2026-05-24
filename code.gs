@@ -1109,6 +1109,16 @@ function _checkEditable(cycleID) {
 /**
  * 確定用バリデーション: 全フィールド埋まりチェック
  */
+function _formatStopTimeTag(isoStr) {
+  if (!isoStr) return '記録';
+  try {
+    const d = new Date(isoStr);
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
+           String(d.getHours()).padStart(2, '0') + ':' +
+           String(d.getMinutes()).padStart(2, '0');
+  } catch (e) { return '記録'; }
+}
+
 function _validateCycleForConfirm(cycle, stopRecords) {
   const errs = [];
   const is500ml = cycle.line === '500ml';
@@ -1117,8 +1127,8 @@ function _validateCycleForConfirm(cycle, stopRecords) {
   if (!cycle.productionStartAt) errs.push('製造開始時刻が未入力です');
   if (!cycle.productionEndAt)   errs.push('製造終了時刻が未入力です');
 
-  (stopRecords || []).forEach((r, i) => {
-    const tag = '停止記録#' + (i + 1) + ' (' + (r.logID || '') + ')';
+  (stopRecords || []).forEach((r) => {
+    const tag = _formatStopTimeTag(r.stopAt);
     if (!r.startAt)            errs.push(tag + ': スタート時刻');
     if (!r.equipment)          errs.push(tag + ': 停止設備');
     if (!r.reason)             errs.push(tag + ': 停止理由');

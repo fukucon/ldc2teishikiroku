@@ -1340,7 +1340,7 @@ function updateConfirmUI() {
 
 function confirmCycle() {
   if (!STATE.cycle) return;
-  if (!confirm('全フィールド入力済みなら日報を確定します。よろしいですか？')) return;
+  // 確認ダイアログなし: バリデーション失敗時のみモーダルで未入力を案内
   gas('api_confirmCycle', { cycleID: STATE.cycle.cycleID }).then(res => {
     if (!res.success) {
       const msg = res.validationErrors
