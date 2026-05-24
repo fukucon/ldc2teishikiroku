@@ -562,6 +562,58 @@
     text-align: center; padding: 24px; color: var(--muted); font-size: 13px;
   }
 
+  /* UF温度 / TEA温度 入力は半分の幅 */
+  .record-fields-grid input[data-field="ufTemp"],
+  .record-fields-grid input[data-field="teaTemp"] {
+    max-width: 70px;
+    flex: 0 0 70px;
+  }
+
+  /* 削除ボタン (各カード行2の右端) */
+  .record-body {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .record-body > .record-fields-grid {
+    flex: 1; min-width: 0;
+  }
+  .record-delete-btn {
+    flex-shrink: 0;
+    align-self: flex-end;
+    padding: 4px 12px;
+    border: 1px solid #dc2626;
+    background: #fff;
+    color: #dc2626;
+    border-radius: 5px;
+    font-size: 12px; font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .record-delete-btn:hover { background: #fef2f2; }
+  body.cycle-readonly .record-delete-btn {
+    pointer-events: none;
+    opacity: 0.4;
+  }
+  @media (max-width: 700px) {
+    .record-body { display: block; }
+    .record-delete-btn {
+      display: block;
+      width: 100%;
+      margin: 8px 0 0;
+    }
+  }
+
+  /* モーダル: 危険操作用ボタン */
+  .btn-danger {
+    background: #dc2626; color: #fff; border: none;
+    padding: 10px 18px; border-radius: 8px;
+    font-size: 14px; font-weight: 700;
+    cursor: pointer;
+  }
+  .btn-danger:hover { background: #b91c1c; }
+  .modal-message.danger { color: #dc2626; font-weight: 700; }
+
   /* 同期インジケータ */
   #sync-indicator {
     position: fixed; bottom: 0; left: 0; right: 0;
@@ -814,17 +866,64 @@ function manualRefresh() {
 }
 
 // 汎用モーダル
-function showModal(message, icon) {
+// 互換シグネチャ: showModal(message, icon) または showModal(message, options)
+// options: { icon, danger:bool, confirm:fn, confirmLabel, cancelLabel }
+function showModal(message, iconOrOptions) {
+  const opts = (typeof iconOrOptions === 'string' || iconOrOptions == null)
+    ? { icon: iconOrOptions }
+    : iconOrOptions;
   const overlay = document.getElementById('modal-overlay');
-  document.getElementById('modal-message').textContent = message || '';
-  document.getElementById('modal-icon').textContent = icon || '';
+  const msgEl = document.getElementById('modal-message');
+  msgEl.textContent = message || '';
+  msgEl.classList.toggle('danger', !!opts.danger);
+  document.getElementById('modal-icon').textContent = opts.icon || '';
+
+  const actions = overlay.querySelector('.modal-actions');
+  if (opts.confirm) {
+    actions.innerHTML = '';
+    const cancel = document.createElement('button');
+    cancel.className = 'btn-secondary';
+    cancel.textContent = opts.cancelLabel || 'キャンセル';
+    cancel.onclick = hideModal;
+    const yes = document.createElement('button');
+    yes.className = opts.danger ? 'btn-danger' : 'btn-primary';
+    yes.textContent = opts.confirmLabel || 'OK';
+    yes.onclick = () => { hideModal(); opts.confirm(); };
+    actions.appendChild(cancel);
+    actions.appendChild(yes);
+  } else {
+    actions.innerHTML = '<button class="btn-primary" onclick="hideModal()">閉じる</button>';
+  }
   overlay.classList.remove('hidden');
 }
 function hideModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
+  // 後始末: danger クラスを外す
+  document.getElementById('modal-message').classList.remove('danger');
 }
 function onModalOverlayClick(e) {
   if (e.target.id === 'modal-overlay') hideModal();
+}
+
+// 停止記録の削除（確認モーダル → 実行）
+function confirmDeleteRecord(logID) {
+  showModal('この操作は取り消せません。\n削除しますか？', {
+    icon: '⚠',
+    danger: true,
+    confirm: () => doDeleteRecord(logID),
+    confirmLabel: '削除する',
+    cancelLabel: 'キャンセル'
+  });
+}
+function doDeleteRecord(logID) {
+  gas('api_deleteStopRecord', { logID: logID }).then(res => {
+    if (!res || !res.success) {
+      showModal('削除失敗: ' + ((res && res.error) || '通信エラー'), '⚠');
+      return;
+    }
+    STATE.stopRecords = (STATE.stopRecords || []).filter(r => r.logID !== logID);
+    renderRecordList();
+  }).catch(err => showModal('通信エラー: ' + (err.message || err), '⚠'));
 }
 
 // =====================================================
@@ -1456,6 +1555,7 @@ function renderRecordList() {
           <span class="record-minutes ${hasStart ? '' : 'pending'}" data-min="${lid}">${minutesStr}</span>
           ${productCell}
         </div>
+        <div class="record-body">
         <div class="record-fields-grid">
           <div>
             <div class="field-label">停止設備</div>
@@ -1541,6 +1641,8 @@ function renderRecordList() {
               <span class="rec-ind" data-ind="${lid}-wastage"></span>
             </div>
           </div>
+        </div>
+        <button class="record-delete-btn" onclick="confirmDeleteRecord('${lid}')">削除</button>
         </div>
       </div>`;
   }).join('');

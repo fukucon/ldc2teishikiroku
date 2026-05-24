@@ -1364,6 +1364,47 @@ function api_getAnalysis(payload) {
 }
 
 /**
+ * 停止ログを1件削除
+ * payload: { logID }
+ * 確定済サイクルは編集権限チェックを通る (リーダーのみ削除可)
+ */
+function api_deleteStopRecord(payload) {
+  const logID = payload && payload.logID;
+  if (!logID) return { success: false, error: 'logID は必須です' };
+
+  const cycleID = _cycleFromLogID(logID);
+  if (!cycleID) return { success: false, error: 'logIDからの親特定失敗: ' + logID };
+  const editCheck = _checkEditable(cycleID);
+  if (!editCheck.ok) return { success: false, error: editCheck.error };
+
+  const year = _yearFromCycleID(cycleID);
+  const sheet = _getYearlySheet(CONFIG.SHEET_PREFIX_LOG + year);
+  if (!sheet) return { success: false, error: '停止ログシートがありません' };
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    if (sheet.getLastRow() < 2) return { success: false, error: 'ログ行が見つかりません: ' + logID };
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, LOG_COLS.length).getValues();
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][0] === logID) {
+        const row = i + 2;
+        const minutes = Number(data[i][LC['停止分数']]) || 0;
+        sheet.deleteRow(row);
+        // 親の件数・合計時間を差分更新
+        _updateParentCounts(cycleID, -1, -minutes);
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'ログ行が見つかりません: ' + logID };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
  * 全てのサーバーサイドキャッシュ（部署/マスタ/商品）を強制的にクリアする
  * 手動更新ボタンから呼ばれる
  */
