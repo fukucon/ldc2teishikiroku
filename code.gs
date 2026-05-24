@@ -1003,7 +1003,8 @@ function _getDepartments() {
 
 /**
  * 商品マスター取得（共通マスタースプシの「商品マスター」シートから）
- *   A列: 商品ID, B列: 商品名, C列: 種別（2L / 500ml）, D列: 商品通称
+ *   A列: 商品ID, B列: 商品名, C列: 種別（2L / 500ml）, D列: 商品通称, E列: 有効
+ *   有効列に false が入っている行は除外（空欄 / true / 未定義 は有効扱い）
  */
 function _getProducts() {
   const cache = CacheService.getScriptCache();
@@ -1015,10 +1016,10 @@ function _getProducts() {
     const ss = _masterSS();
     const sheet = ss.getSheetByName(CONFIG.MASTER_PRODUCT);
     if (sheet && sheet.getLastRow() >= 2) {
-      const cols = Math.min(4, sheet.getLastColumn());
+      const cols = Math.min(5, sheet.getLastColumn());
       const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
       products = rows
-        .filter(r => r[0])
+        .filter(r => r[0] && r[4] !== false)   // 有効列が明示的に false の行を除外
         .map(r => ({
           id: String(r[0]),
           name: String(r[1] || r[0]),
