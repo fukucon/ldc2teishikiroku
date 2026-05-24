@@ -100,7 +100,8 @@ const LOG_COLS = [
   '切替後商品ID',     // 15 停止設備に 商品切替 を含むときだけ使用
   '切替後商品名',     // 16 商品マスターからのスナップショット
   '切替後商品種別',   // 17 同上 (2L / 500ml)
-  '切替後商品通称'    // 18 同上
+  '切替後商品通称',   // 18 同上
+  '切替前商品名'      // 19 (移行データ用) 「X→Y」で記録されていた切替前商品名
 ];
 const LC = {};
 LOG_COLS.forEach((n, i) => LC[n] = i);
@@ -410,7 +411,8 @@ function api_addStopRecord(payload) {
       '',          // 切替後商品ID
       '',          // 切替後商品名
       '',          // 切替後商品種別
-      ''           // 切替後商品通称
+      '',          // 切替後商品通称
+      ''           // 切替前商品名
     ]);
 
     // 親のキャッシュ列を更新
@@ -747,7 +749,8 @@ function _getStopRecords(cycleID) {
       newProductID: r[15] ? String(r[15]) : '',
       newProductName: r[16] ? String(r[16]) : '',
       newProductKind: r[17] ? String(r[17]) : '',
-      newProductNickname: r[18] ? String(r[18]) : ''
+      newProductNickname: r[18] ? String(r[18]) : '',
+      prevProductName: r[19] ? String(r[19]) : ''
     }))
     .sort((a, b) => (a.stopAt < b.stopAt ? -1 : a.stopAt > b.stopAt ? 1 : 0));
 }
