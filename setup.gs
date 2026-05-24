@@ -159,4 +159,3 @@ function testConnection() {
   }
 }
 
-// ci: workflow trigger marker
