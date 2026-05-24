@@ -1218,14 +1218,10 @@ function addStopRecord() {
         fillDatalist('equipment-list', STATE.masters.equipment);
         fillDatalist('reason-list', STATE.masters.reason);
         fillDatalist('action-list', STATE.masters.action);
-        // 追加した行に自動スクロール + 停止設備にフォーカス
+        // 追加した行に自動スクロール（フォーカスは当てない＝自動更新を止めない）
         setTimeout(function() {
           var newItem = document.querySelector('[data-log-id="' + res.logID + '"]');
-          if (newItem) {
-            newItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            var firstInput = newItem.querySelector('input[data-field="equipment"]');
-            if (firstInput) firstInput.focus();
-          }
+          if (newItem) newItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 100);
       }
     });
@@ -1402,6 +1398,8 @@ function renderRecordList() {
     const showStartDate = hasStart && startDateStr !== stopDateStr;
     const monthOptsSel = monthOpts.replace(`value="${stopMonth}"`, `value="${stopMonth}" selected`);
     const dayOptsSel   = dayOpts.replace(`value="${stopDay}"`,     `value="${stopDay}" selected`);
+    // ライン判定 (500ml はフィラー温度のみ、TEA温度を非表示)
+    const is500ml = STATE.cycle.line === '500ml';
     // 商品切替 判定 / この行の商品（切替後 or 前）
     const eqStr = String(r.equipment || '');
     const isSwitch = eqStr.indexOf('品種切替') !== -1 || eqStr.indexOf('商品切替') !== -1;
@@ -1492,6 +1490,27 @@ function renderRecordList() {
             </div>
           </div>
           <div>
+            <div class="field-label">${is500ml ? 'フィラー温度' : 'UF温度'}</div>
+            <div class="field-input-wrap">
+              <input type="number" class="record-field" step="0.1"
+                data-log-id="${lid}" data-field="ufTemp"
+                value="${r.ufTemp || ''}"
+                onblur="saveRecordField('${lid}', 'ufTemp', this.value)">
+              <span class="rec-ind" data-ind="${lid}-ufTemp"></span>
+            </div>
+          </div>
+          ${is500ml ? '' : `
+          <div>
+            <div class="field-label">TEA温度</div>
+            <div class="field-input-wrap">
+              <input type="number" class="record-field" step="0.1"
+                data-log-id="${lid}" data-field="teaTemp"
+                value="${r.teaTemp || ''}"
+                onblur="saveRecordField('${lid}', 'teaTemp', this.value)">
+              <span class="rec-ind" data-ind="${lid}-teaTemp"></span>
+            </div>
+          </div>`}
+          <div>
             <div class="field-label">CR入室</div>
             <div class="field-input-wrap">
               <div class="radio-group">
@@ -1509,26 +1528,6 @@ function renderRecordList() {
                 value="${r.wastage || ''}"
                 onblur="saveRecordField('${lid}', 'wastage', this.value)">
               <span class="rec-ind" data-ind="${lid}-wastage"></span>
-            </div>
-          </div>
-          <div>
-            <div class="field-label">UF温度</div>
-            <div class="field-input-wrap">
-              <input type="number" class="record-field" step="0.1"
-                data-log-id="${lid}" data-field="ufTemp"
-                value="${r.ufTemp || ''}"
-                onblur="saveRecordField('${lid}', 'ufTemp', this.value)">
-              <span class="rec-ind" data-ind="${lid}-ufTemp"></span>
-            </div>
-          </div>
-          <div>
-            <div class="field-label">TEA温度</div>
-            <div class="field-input-wrap">
-              <input type="number" class="record-field" step="0.1"
-                data-log-id="${lid}" data-field="teaTemp"
-                value="${r.teaTemp || ''}"
-                onblur="saveRecordField('${lid}', 'teaTemp', this.value)">
-              <span class="rec-ind" data-ind="${lid}-teaTemp"></span>
             </div>
           </div>
         </div>

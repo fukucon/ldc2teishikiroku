@@ -1111,6 +1111,8 @@ function _checkEditable(cycleID) {
  */
 function _validateCycleForConfirm(cycle, stopRecords) {
   const errs = [];
+  const is500ml = cycle.line === '500ml';
+  const tempLabel = is500ml ? 'フィラー温度' : 'UF温度';
   if (!cycle.productID)         errs.push('商品が未選択です');
   if (!cycle.productionStartAt) errs.push('製造開始時刻が未入力です');
   if (!cycle.productionEndAt)   errs.push('製造終了時刻が未入力です');
@@ -1123,8 +1125,8 @@ function _validateCycleForConfirm(cycle, stopRecords) {
     if (!r.action)             errs.push(tag + ': 対応内容');
     if (!r.charge)             errs.push(tag + ': 担当');
     if (!r.crEntry)            errs.push(tag + ': CR入室');
-    if (r.ufTemp  === '' || r.ufTemp  == null) errs.push(tag + ': UF温度');
-    if (r.teaTemp === '' || r.teaTemp == null) errs.push(tag + ': TEA温度');
+    if (r.ufTemp  === '' || r.ufTemp  == null) errs.push(tag + ': ' + tempLabel);
+    if (!is500ml && (r.teaTemp === '' || r.teaTemp == null)) errs.push(tag + ': TEA温度');
     const eqStr = String(r.equipment || '');
     if ((eqStr.indexOf('品種切替') !== -1 || eqStr.indexOf('商品切替') !== -1) && !r.newProductID) {
       errs.push(tag + ': 商品切替の切替後商品');
