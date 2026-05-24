@@ -159,3 +159,43 @@ function testConnection() {
   }
 }
 
+// =====================================================
+//  外部スプシ → アプリDB へのデータ移行ツール
+// =====================================================
+const IMPORT_SOURCE_SS_ID = '1TQrqsHXsR-e1cO8bnYYL0__TXLNQL0Wn7ryRd2JA57g';
+
+/**
+ * 移行元スプシの構造確認用デバッグ関数
+ *
+ * 使い方:
+ *   1) sheetName 省略で実行 → 全シート名一覧
+ *   2) sheetName 指定（例: '20260501（2L）'）→ そのシートの1〜15行をダンプ
+ */
+function debugInspectExternalSheet(sheetName) {
+  let ss;
+  try {
+    ss = SpreadsheetApp.openById(IMPORT_SOURCE_SS_ID);
+  } catch (e) {
+    Logger.log('外部スプシを開けません: ' + e.message);
+    return;
+  }
+  Logger.log('外部スプシ名: ' + ss.getName());
+
+  if (!sheetName) {
+    Logger.log('---- シート一覧 ----');
+    ss.getSheets().forEach(s => Logger.log('  「' + s.getName() + '」'));
+    Logger.log('（特定シートを見るには debugInspectExternalSheet("シート名") を実行）');
+    return;
+  }
+
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) { Logger.log('シートが見つかりません: ' + sheetName); return; }
+  const lastCol = sheet.getLastColumn();
+  const lastRow = Math.min(sheet.getLastRow(), 15);
+  Logger.log('シート: ' + sheetName + ' / lastRow=' + sheet.getLastRow() + ' / lastCol=' + lastCol);
+  const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  data.forEach((row, i) => {
+    Logger.log('  row' + (i + 1) + ': ' + JSON.stringify(row));
+  });
+}
+
