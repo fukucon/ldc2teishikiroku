@@ -1062,13 +1062,20 @@ function _getPermissions() {
   return list;
 }
 
+// 権限レベルの表記揺れを吸収（長音記号の異字体・ハイフン類を正規化）
+function _normalizePermissionLevel(s) {
+  return String(s || '').trim()
+    .replace(/[―−–—\-‐ｰ]/g, 'ー');   // 各種「棒」を全部 KATAKANA 長音 (U+30FC) に統一
+}
+
 // 「リーダー以上」= 権限レベル が "リーダー" または "全権"
 function _isLeaderOrAbove(email) {
   if (!email) return false;
   const e = String(email).toLowerCase().trim();
   const rec = _getPermissions().find(p => p.email === e);
   if (!rec) return false;
-  return rec.level === 'リーダー' || rec.level === '全権';
+  const lvl = _normalizePermissionLevel(rec.level);
+  return lvl === 'リーダー' || lvl === '全権';
 }
 function _isCurrentUserLeaderOrAbove() {
   return _isLeaderOrAbove(_activeUserEmail());
