@@ -158,3 +158,5 @@ function testConnection() {
     Logger.log('アプリDB NG: ' + e.message);
   }
 }
+
+// ci: workflow trigger marker
