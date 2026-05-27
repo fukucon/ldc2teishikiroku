@@ -58,8 +58,8 @@ const HEADER_COLS = [
   '製造日',           // 2  サイクル開始日（年シャーディングキー）
   '作成部署',         // 3  端末選択された部署
   '作成日時',         // 4
-  'ステータス',       // 5  通常 / 重複未統合 / 統合済み / 統合先
-  '統合先サイクルID', // 6  統合済みのとき
+  'ステータス',       // 5  通常 / 重複未統合 （統合機能は廃止、互換のため列維持）
+  '統合先サイクルID', // 6  (deprecated, 未使用)
   '元サイクルID',     // 7  v2,v3 のとき
   'バージョン番号',   // 8  1 / 2 / 3
   '特記事項',         // 9
@@ -267,7 +267,7 @@ function api_createCycle(payload) {
       version: version,
       isDuplicate: conflict.conflict,
       message: conflict.conflict
-        ? '同日同ラインの既存サイクルあり: ' + cycleID + ' として登録（管理画面で統合判断してください）'
+        ? '同日同ラインの既存サイクルあり: ' + cycleID + ' として登録'
         : '日報を作成しました: ' + cycleID
     };
   } catch (e) {
@@ -699,7 +699,6 @@ function _findCycle(cycleID) {
         department: r[3],
         createdAt: _toIso(r[4]),
         status: r[5],
-        mergedTo: r[6],
         originalID: r[7],
         version: r[8],
         notes: r[9],
@@ -907,8 +906,6 @@ function _getCycles(params) {
   if (beforeDate) {
     filtered = filtered.filter(r => _toDateStr(r[2]) < beforeDate);
   }
-  // 統合先（=非表示）は除外
-  filtered = filtered.filter(r => r[5] !== '統合済み');
 
   // 製造日 desc、同日内はサイクルID asc
   filtered.sort((a, b) => {
@@ -931,7 +928,6 @@ function _getCycles(params) {
       department: r[3],
       createdAt: _toIso(r[4]),
       status: r[5],
-      mergedTo: r[6],
       originalID: r[7],
       version: r[8],
       notes: r[9],

@@ -220,7 +220,6 @@
     vertical-align: middle;
   }
   .badge-v { background: #fef3c7; color: #92400e; }
-  .badge-status { background: #fee2e2; color: #991b1b; }
 
   /* 空・スケルトン */
   .empty-state {
@@ -612,8 +611,6 @@ function renderCycleCard(c) {
   const dateLabel = `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
   const versionBadge = (c.version > 1)
     ? `<span class="badge badge-v">v${c.version}</span>` : '';
-  const statusBadge = (c.status === '重複未統合')
-    ? `<span class="badge badge-status">統合待ち</span>` : '';
   const timesLine = formatCycleTimes(c.productionStartAt, c.productionEndAt, c.productionDate);
   const deleteBtn = STATE.isLeaderOrAbove
     ? `<button class="cycle-delete-btn" onclick="event.stopPropagation(); showDeleteCycleModal('${c.cycleID}')" title="日報を削除">削除</button>`
@@ -622,7 +619,7 @@ function renderCycleCard(c) {
     <div class="cycle-card" onclick="openCycle('${c.cycleID}')">
       <div class="cycle-date">${dateLabel}</div>
       <div class="cycle-info">
-        ${(versionBadge || statusBadge) ? `<div class="cycle-id">${versionBadge}${statusBadge}</div>` : ''}
+        ${versionBadge ? `<div class="cycle-id">${versionBadge}</div>` : ''}
         <div class="cycle-meta">
           <span class="cycle-times">${timesLine}</span>
           <span class="cycle-stats">
