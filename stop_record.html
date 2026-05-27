@@ -751,6 +751,7 @@
 <datalist id="equipment-list"></datalist>
 <datalist id="reason-list"></datalist>
 <datalist id="action-list"></datalist>
+<datalist id="charge-list"></datalist>
 <datalist id="uf-temp-list">
   <option value="50"><option value="51"><option value="52"><option value="53"><option value="54"><option value="55"><option value="56"><option value="57"><option value="58"><option value="59"><option value="60">
 </datalist>
@@ -1005,7 +1006,7 @@ function startWakeLock() {
 // 入力中の値を壊さずに STATE と DOM を更新する
 function softMerge(detail) {
   STATE.cycle = detail.cycle;
-  STATE.masters = detail.masters || STATE.masters || { equipment: [], reason: [], action: [] };
+  STATE.masters = detail.masters || STATE.masters || { equipment: [], reason: [], action: [], charge: [] };
   if (detail.masters) saveCachedMasters(STATE.masters);
   if (detail.products) {
     STATE.products = detail.products;
@@ -1016,6 +1017,7 @@ function softMerge(detail) {
   fillDatalist('equipment-list', STATE.masters.equipment);
   fillDatalist('reason-list', STATE.masters.reason);
   fillDatalist('action-list', STATE.masters.action);
+  fillDatalist('charge-list', STATE.masters.charge || []);
 
   // 製造開始 時:分: focus 中はスキップ
   const startH = document.getElementById('prod-start-hour');
@@ -1070,6 +1072,7 @@ window.addEventListener('DOMContentLoaded', () => {
     fillDatalist('equipment-list', cachedMasters.equipment || []);
     fillDatalist('reason-list',    cachedMasters.reason    || []);
     fillDatalist('action-list',    cachedMasters.action    || []);
+    fillDatalist('charge-list',    cachedMasters.charge    || []);
   }
   STATE.products = loadCachedProducts();
 
@@ -1080,7 +1083,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     STATE.cycle = res.cycle;
     STATE.stopRecords = res.stopRecords || [];
-    STATE.masters = res.masters || { equipment: [], reason: [], action: [] };
+    STATE.masters = res.masters || { equipment: [], reason: [], action: [], charge: [] };
     saveCachedMasters(STATE.masters);
     if (res.products) {
       STATE.products = res.products;
@@ -1166,6 +1169,7 @@ function renderAll() {
   fillDatalist('equipment-list', STATE.masters.equipment);
   fillDatalist('reason-list', STATE.masters.reason);
   fillDatalist('action-list', STATE.masters.action);
+  fillDatalist('charge-list', STATE.masters.charge || []);
 }
 
 function fillDatalist(id, items) {
@@ -1637,8 +1641,9 @@ function renderRecordList() {
           <div>
             <div class="field-label">担当</div>
             <div class="field-input-wrap">
-              <input type="text" class="record-field"
+              <input type="text" class="record-field" list="charge-list"
                 data-log-id="${lid}" data-field="charge"
+                placeholder="選択or入力"
                 value="${escapeAttr(r.charge || '')}"
                 onblur="saveRecordField('${lid}', 'charge', this.value)">
               <span class="rec-ind" data-ind="${lid}-charge"></span>

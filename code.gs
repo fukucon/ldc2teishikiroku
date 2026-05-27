@@ -21,6 +21,7 @@ const CONFIG = {
   SHEET_EQUIPMENT:  '停止設備マスタ',
   SHEET_REASON:     '停止理由マスタ',
   SHEET_ACTION:     '対応内容履歴',
+  SHEET_CHARGE:     '担当マスター',
 
   // 共通マスタースプシ内
   MASTER_DEPT:        '部署マスタ',
@@ -419,10 +420,11 @@ function api_addStopRecord(payload) {
     // 親のキャッシュ列を更新
     _updateParentCounts(cycleID, 1, minutes);
 
-    // マスタへの自動追加（停止設備・停止理由・対応内容）
+    // マスタへの自動追加（停止設備・停止理由・対応内容・担当）
     if (equipment) _bumpMasterEntry(CONFIG.SHEET_EQUIPMENT, equipment);
     if (reason)    _bumpMasterEntry(CONFIG.SHEET_REASON, reason);
     if (action)    _bumpMasterEntry(CONFIG.SHEET_ACTION, action);
+    if (charge)    _bumpMasterEntry(CONFIG.SHEET_CHARGE, charge);
 
     return { success: true, logID: logID, minutes: minutes };
   } catch (e) {
@@ -630,6 +632,7 @@ function api_updateStopRecordFields(payload) {
         if (fields.equipment) _bumpMasterEntry(CONFIG.SHEET_EQUIPMENT, fields.equipment);
         if (fields.reason)    _bumpMasterEntry(CONFIG.SHEET_REASON, fields.reason);
         if (fields.action)    _bumpMasterEntry(CONFIG.SHEET_ACTION, fields.action);
+        if (fields.charge)    _bumpMasterEntry(CONFIG.SHEET_CHARGE, fields.charge);
         return { success: true };
       }
     }
@@ -1488,7 +1491,8 @@ function _getMasters() {
   const result = {
     equipment: _readMasterFree(CONFIG.SHEET_EQUIPMENT),
     reason:    _readMasterFree(CONFIG.SHEET_REASON),
-    action:    _readMasterFree(CONFIG.SHEET_ACTION)
+    action:    _readMasterFree(CONFIG.SHEET_ACTION),
+    charge:    _readMasterFree(CONFIG.SHEET_CHARGE)
   };
   cache.put(CONFIG.CACHE_KEY_MASTERS, JSON.stringify(result), CONFIG.CACHE_DURATION_SEC);
   return result;

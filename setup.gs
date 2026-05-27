@@ -34,6 +34,7 @@ function setupDatabase() {
   _ensureSheet(appSS, CONFIG.SHEET_EQUIPMENT, MASTER_FREE_COLS);
   _ensureSheet(appSS, CONFIG.SHEET_REASON,    MASTER_FREE_COLS);
   _ensureSheet(appSS, CONFIG.SHEET_ACTION,    MASTER_FREE_COLS);
+  _ensureSheet(appSS, CONFIG.SHEET_CHARGE,    MASTER_FREE_COLS);
 
   // 現在年のシャーディングシート
   const currentYear = new Date().getFullYear();
