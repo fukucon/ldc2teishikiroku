@@ -1122,11 +1122,18 @@ window.addEventListener('DOMContentLoaded', () => {
     if (ind) ind.className = 'rec-ind';
   });
 
-  // タブレット: フォーム外のタップでアクティブ入力を blur（保存を確定 + 自動更新を再開）
+  // タブレット: 本当に「外」を タップした時のみ blur（誤発火防止のため、
+  // フォーム要素・カード・ヘッダー・モーダルの内側はすべてセーフ扱い）
   const blurOnOutsideTap = (e) => {
     const t = e.target;
     if (!t || !t.closest) return;
+    // フォーム要素そのもの
     if (t.closest('input, select, textarea, button, .radio-option, label, datalist, option')) return;
+    // フォームが入ってる主要コンテナの内側は触っても blur しない
+    if (t.closest(
+      '.record-item, .add-bar-inline, .top-bar-row, .top-row, header,' +
+      '.confirm-area, .field-input-wrap, .field-label, .modal-dialog, .prod-group'
+    )) return;
     const ae = document.activeElement;
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA')) {
       ae.blur();
