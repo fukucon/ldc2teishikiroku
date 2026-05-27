@@ -181,6 +181,21 @@
     cursor: pointer; min-height: 60px;
   }
   .cycle-card:active { background: #f1f3f4; }
+  .cycle-delete-btn {
+    flex-shrink: 0; margin-left: auto;
+    background: var(--surface); color: #dc2626;
+    border: 1px solid #dc2626; border-radius: 5px;
+    padding: 4px 10px; font-size: 12px; font-weight: 700;
+    cursor: pointer;
+  }
+  .cycle-delete-btn:hover { background: #fef2f2; }
+  .modal-message-danger { color: #dc2626; font-weight: 700; }
+  .btn-danger {
+    background: #dc2626; color: #fff; border: none;
+    padding: 10px 20px; border-radius: 8px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  .btn-danger:hover { background: #b91c1c; }
   .cycle-date {
     font-size: 22px; font-weight: 700; min-width: 60px; text-align: center;
     color: var(--text);
@@ -450,6 +465,24 @@
   </div>
 </div>
 
+<!-- 日報削除確認モーダル (リーダー以上のみ表示) -->
+<div class="modal-backdrop" id="delete-cycle-modal" style="display: none;">
+  <div class="modal">
+    <div class="modal-header">⚠ 日報を削除</div>
+    <div class="modal-body">
+      <div class="confirm-message modal-message-danger">
+        この操作は取り消せません。<br>
+        本当に削除しますか？
+      </div>
+      <div id="delete-cycle-info" style="margin-top: 12px; font-size: 13px; color: var(--muted);"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('delete-cycle-modal')">キャンセル</button>
+      <button class="btn-danger" id="delete-cycle-confirm-btn" onclick="doDeleteCycle()">削除する</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // =====================================================
 //  状態
@@ -470,7 +503,11 @@ const STATE = {
   // 新規作成モーダル一時データ
   pendingCycle: null,
   // ライン選択肢（モーダル用）
-  lineOptions: null
+  lineOptions: null,
+  // 権限
+  isLeaderOrAbove: false,
+  // 削除対象（モーダル用）
+  pendingDeleteCycleID: null
 };
 
 // =====================================================
@@ -500,11 +537,13 @@ window.addEventListener('DOMContentLoaded', () => {
       STATE.lineOptions = data.lines || [];
       buildLineRadios(STATE.lineOptions);
       STATE.cycleCache['2L'] = data.cycles;
+      STATE.isLeaderOrAbove = !!data.isLeaderOrAbove;
       // 商品マスターを localStorage にキャッシュ（次回オープン即時利用）
       if (data.products) {
         try { localStorage.setItem('cached_products_v1', JSON.stringify(data.products)); } catch (e) {}
       }
       renderCycles('2L');
+      renderCycles('500ml');  // リーダー権限の反映で削除ボタンが必要なら再描画
       // 部署未選択ならモーダル
       if (!STATE.department) setTimeout(showDeptModal, 200);
     })
@@ -576,6 +615,9 @@ function renderCycleCard(c) {
   const statusBadge = (c.status === '重複未統合')
     ? `<span class="badge badge-status">統合待ち</span>` : '';
   const timesLine = formatCycleTimes(c.productionStartAt, c.productionEndAt, c.productionDate);
+  const deleteBtn = STATE.isLeaderOrAbove
+    ? `<button class="cycle-delete-btn" onclick="event.stopPropagation(); showDeleteCycleModal('${c.cycleID}')" title="日報を削除">削除</button>`
+    : '';
   return `
     <div class="cycle-card" onclick="openCycle('${c.cycleID}')">
       <div class="cycle-date">${dateLabel}</div>
@@ -589,6 +631,7 @@ function renderCycleCard(c) {
           </span>
         </div>
       </div>
+      ${deleteBtn}
     </div>`;
 }
 
@@ -863,6 +906,59 @@ function reloadAll() {
 
 function openCycle(cycleID) {
   window.top.location.href = APP_URL + '?cycle=' + encodeURIComponent(cycleID);
+}
+
+// =====================================================
+//  日報削除（リーダー以上）
+// =====================================================
+function showDeleteCycleModal(cycleID) {
+  STATE.pendingDeleteCycleID = cycleID;
+  // 対象サイクル情報を表示
+  let info = cycleID;
+  ['2L', '500ml'].forEach(line => {
+    const cache = STATE.cycleCache[line];
+    if (!cache || !cache.cycles) return;
+    const c = cache.cycles.find(x => x.cycleID === cycleID);
+    if (c) {
+      const d = c.productionDate.split('-');
+      info = c.line + ' / ' + parseInt(d[1], 10) + '/' + parseInt(d[2], 10) +
+             ' / 停止記録 ' + (c.stopCount || 0) + ' 件';
+    }
+  });
+  document.getElementById('delete-cycle-info').textContent = info;
+  openModal('delete-cycle-modal');
+}
+
+function doDeleteCycle() {
+  const cycleID = STATE.pendingDeleteCycleID;
+  if (!cycleID) { closeModal('delete-cycle-modal'); return; }
+  const btn = document.getElementById('delete-cycle-confirm-btn');
+  btn.disabled = true;
+  btn.textContent = '削除中…';
+  gas('api_deleteCycle', { cycleID: cycleID }).then(res => {
+    btn.disabled = false;
+    btn.textContent = '削除する';
+    closeModal('delete-cycle-modal');
+    if (!res || !res.success) {
+      alert('削除失敗: ' + ((res && res.error) || '通信エラー'));
+      return;
+    }
+    // STATE から該当サイクルを除外し、両ライン再描画
+    ['2L', '500ml'].forEach(line => {
+      const cache = STATE.cycleCache[line];
+      if (cache && cache.cycles) {
+        cache.cycles = cache.cycles.filter(x => x.cycleID !== cycleID);
+      }
+    });
+    renderCycles('2L');
+    renderCycles('500ml');
+  }).catch(err => {
+    btn.disabled = false;
+    btn.textContent = '削除する';
+    closeModal('delete-cycle-modal');
+    alert('通信エラー: ' + (err.message || err));
+  });
+  STATE.pendingDeleteCycleID = null;
 }
 
 function saveDraftToLocalStorage() {

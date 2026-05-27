@@ -159,7 +159,8 @@ function api_initialLoad(line) {
     lastProducts: _getLastProducts(),
     cycles: _getCycles({ year: year, line: line, limit: CONFIG.CYCLES_PER_PAGE }),
     userEmail: _activeUserEmail(),
-    canEditConfirmed: _isCurrentUserLeaderOrAbove()
+    canEditConfirmed: _isCurrentUserLeaderOrAbove(),
+    isLeaderOrAbove: _isCurrentUserLeaderOrAbove()
   };
 }
 
@@ -1175,6 +1176,55 @@ function api_confirmCycle(payload) {
       }
     }
     return { success: false, error: 'サイクル行が見つかりません: ' + cycleID };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 日報（サイクル）丸ごと削除（リーダー以上のみ）
+ * 関連する停止ログも全て削除
+ * payload: { cycleID }
+ */
+function api_deleteCycle(payload) {
+  if (!_isCurrentUserLeaderOrAbove()) return { success: false, error: 'リーダー以上の権限が必要です' };
+  const cycleID = payload && payload.cycleID;
+  if (!cycleID) return { success: false, error: 'cycleID は必須です' };
+
+  const year = _yearFromCycleID(cycleID);
+  if (!year) return { success: false, error: '年抽出失敗: ' + cycleID };
+
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+
+    // 1. 停止ログから関連行を削除（下から削除で行ずれ防止）
+    const logSheet = _getYearlySheet(CONFIG.SHEET_PREFIX_LOG + year);
+    let logsDeleted = 0;
+    if (logSheet && logSheet.getLastRow() >= 2) {
+      const data = logSheet.getRange(2, 2, logSheet.getLastRow() - 1, 1).getValues();
+      for (let i = data.length - 1; i >= 0; i--) {
+        if (data[i][0] === cycleID) {
+          logSheet.deleteRow(i + 2);
+          logsDeleted++;
+        }
+      }
+    }
+
+    // 2. サイクルヘッダーから削除
+    const headerSheet = _getYearlySheet(CONFIG.SHEET_PREFIX_HEADER + year);
+    if (headerSheet && headerSheet.getLastRow() >= 2) {
+      const ids = headerSheet.getRange(2, 1, headerSheet.getLastRow() - 1, 1).getValues();
+      for (let i = 0; i < ids.length; i++) {
+        if (ids[i][0] === cycleID) {
+          headerSheet.deleteRow(i + 2);
+          return { success: true, logsDeleted: logsDeleted };
+        }
+      }
+    }
+    return { success: false, error: 'サイクル行が見つかりません: ' + cycleID };
+  } catch (e) {
+    return { success: false, error: e.message };
   } finally {
     lock.releaseLock();
   }
