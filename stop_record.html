@@ -265,7 +265,7 @@
     font-size: 14px; font-weight: 700;
     min-height: 30px; padding: 4px 6px;
     border: 1px solid #d1d5db; border-radius: 5px;
-    min-width: 110px;
+    min-width: 160px;
   }
 
   /* ── 月日(紫) / 開始時刻(青) / 終了・停止時刻(赤) の色分け ── */
@@ -1368,9 +1368,11 @@ function addStopRecord() {
         STATE.stopRecords = detail.stopRecords;
         STATE.masters = detail.masters;
         renderRecordList();
+        populateCycleProductSelect();  // 商品切替stop追加後、+停止セレクタを最新商品に更新
         fillDatalist('equipment-list', STATE.masters.equipment);
         fillDatalist('reason-list', STATE.masters.reason);
         fillDatalist('action-list', STATE.masters.action);
+        fillDatalist('charge-list', STATE.masters.charge || []);
         // 追加した行に自動スクロール（フォーカスは当てない＝自動更新を止めない）
         setTimeout(function() {
           var newItem = document.querySelector('[data-log-id="' + res.logID + '"]');
@@ -1432,15 +1434,22 @@ function productOptionsHtml(products, currentValue) {
   return opts;
 }
 
+// 現在の商品ID（cycle初期商品 + 全 switch を時系列で適用した結果）
+function computeCurrentProduct() {
+  let current = baseProductID();
+  const sorted = (STATE.stopRecords || []).slice().sort((a, b) =>
+    a.stopAt < b.stopAt ? -1 : a.stopAt > b.stopAt ? 1 : 0
+  );
+  sorted.forEach(r => { if (r.newProductID) current = r.newProductID; });
+  return current;
+}
+
 function populateCycleProductSelect() {
   const sel = document.getElementById('cycle-product');
   if (!sel || !STATE.cycle) return;
   if (document.activeElement === sel) return;   // 編集中はスキップ
-  // セレクタの初期値: cycle.productID があればそれ、なければ lastProducts[line]
-  const initial = STATE.cycle.productID
-    || (STATE.lastProducts && STATE.lastProducts[STATE.cycle.line])
-    || '';
-  sel.innerHTML = productOptionsHtml(lineProducts(), initial);
+  // セレクタ表示は「最新の商品」(全商品切替を時系列で反映)
+  sel.innerHTML = productOptionsHtml(lineProducts(), computeCurrentProduct());
 }
 
 function saveCycleProduct() {
