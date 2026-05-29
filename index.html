@@ -235,14 +235,25 @@
     cursor: pointer; min-height: 60px;
   }
   .cycle-card:active { background: #f1f3f4; }
-  .cycle-delete-btn {
+  .cycle-actions {
     flex-shrink: 0; margin-left: auto;
+    display: flex; flex-direction: column; gap: 4px; align-items: stretch;
+  }
+  .cycle-delete-btn {
     background: var(--surface); color: #dc2626;
     border: 1px solid #dc2626; border-radius: 5px;
     padding: 4px 10px; font-size: 12px; font-weight: 700;
-    cursor: pointer;
+    cursor: pointer; white-space: nowrap;
   }
   .cycle-delete-btn:hover { background: #fef2f2; }
+  .cycle-print-btn {
+    background: var(--surface); color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 5px;
+    padding: 4px 10px; font-size: 12px; font-weight: 700;
+    cursor: pointer; white-space: nowrap;
+  }
+  .cycle-print-btn:hover { background: var(--accent-bg, #eff6ff); }
+  .cycle-print-btn:disabled { opacity: 0.5; cursor: wait; }
   .modal-message-danger { color: #dc2626; font-weight: 700; }
   .btn-danger {
     background: #dc2626; color: #fff; border: none;
@@ -734,6 +745,7 @@ function renderCycleCard(c) {
   const deleteBtn = STATE.isLeaderOrAbove
     ? `<button class="cycle-delete-btn" onclick="event.stopPropagation(); showDeleteCycleModal('${c.cycleID}')" title="日報を削除">削除</button>`
     : '';
+  const printBtn = `<button class="cycle-print-btn" onclick="event.stopPropagation(); printCycle('${c.cycleID}', this)" title="印刷">🖨 印刷</button>`;
   return `
     <div class="cycle-card" onclick="openCycle('${c.cycleID}')">
       <div class="cycle-date">${dateLabel}</div>
@@ -747,7 +759,7 @@ function renderCycleCard(c) {
           </span>
         </div>
       </div>
-      ${deleteBtn}
+      <div class="cycle-actions">${printBtn}${deleteBtn}</div>
     </div>`;
 }
 
@@ -1022,6 +1034,36 @@ function reloadAll() {
 
 function openCycle(cycleID) {
   window.top.location.href = APP_URL + '?cycle=' + encodeURIComponent(cycleID);
+}
+
+// =====================================================
+//  印刷（PDF生成 → 別タブで表示）
+// =====================================================
+function printCycle(cycleID, btn) {
+  // ポップアップブロック回避: クリック直後に空タブを開いておく
+  const win = window.open('', '_blank');
+  if (win) win.document.write('<p style="font-family:sans-serif;padding:20px;">印刷用PDFを生成中…</p>');
+  if (btn) { btn.disabled = true; btn.textContent = '生成中…'; }
+
+  gas('api_printCycle', { cycleID: cycleID }).then(res => {
+    if (btn) { btn.disabled = false; btn.textContent = '🖨 印刷'; }
+    if (!res || !res.success) {
+      if (win) win.close();
+      alert('印刷準備に失敗: ' + ((res && res.error) || '通信エラー'));
+      return;
+    }
+    const bin = atob(res.pdfBase64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    if (win) win.location.href = url;
+    else window.open(url, '_blank');
+  }).catch(err => {
+    if (btn) { btn.disabled = false; btn.textContent = '🖨 印刷'; }
+    if (win) win.close();
+    alert('通信エラー: ' + (err.message || err));
+  });
 }
 
 // =====================================================

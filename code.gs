@@ -1181,6 +1181,135 @@ function api_confirmCycle(payload) {
 }
 
 /**
+ * 日報を印刷用テンプレ「印刷」シートに流し込み、PDFを生成して base64 で返す
+ * payload: { cycleID }
+ * 23件/ページで複数ページ対応。一時スプシを作って各ページ=1シートにし、まとめてPDF化
+ */
+const PRINT_TEMPLATE_NAME = '印刷';
+const PRINT_STOPS_PER_PAGE = 23;
+
+function api_printCycle(payload) {
+  const cycleID = payload && payload.cycleID;
+  if (!cycleID) return { success: false, error: 'cycleID は必須です' };
+  const cycle = _findCycle(cycleID);
+  if (!cycle) return { success: false, error: 'サイクルが見つかりません: ' + cycleID };
+  const stops = _getStopRecords(cycleID);
+
+  const appSS = _appSS();
+  const template = appSS.getSheetByName(PRINT_TEMPLATE_NAME);
+  if (!template) return { success: false, error: '印刷テンプレート「' + PRINT_TEMPLATE_NAME + '」が見つかりません' };
+
+  // データ行: 停止記録 + 末尾に製造終了マーカー
+  const rows = stops.map(s => ({
+    stopAt: s.stopAt, startAt: s.startAt, minutes: s.minutes,
+    equipment: s.equipment, reason: s.reason, action: s.action,
+    charge: s.charge, crEntry: s.crEntry, wastage: s.wastage,
+    ufTemp: s.ufTemp, teaTemp: s.teaTemp
+  }));
+  if (cycle.productionEndAt) rows.push({ _end: true, stopAt: cycle.productionEndAt });
+
+  const pageCount = Math.max(1, Math.ceil(rows.length / PRINT_STOPS_PER_PAGE));
+
+  const tempSS = SpreadsheetApp.create('印刷_' + cycleID + '_' + Date.now());
+  const tempId = tempSS.getId();
+  try {
+    for (let p = 0; p < pageCount; p++) {
+      const sh = template.copyTo(tempSS).setName('page' + (p + 1));
+      const pageRows = rows.slice(p * PRINT_STOPS_PER_PAGE, (p + 1) * PRINT_STOPS_PER_PAGE);
+      _fillPrintPage(sh, cycle, pageRows, p + 1, p === 0);
+    }
+    // 既定の空シートを削除（page* 以外）
+    tempSS.getSheets().forEach(s => { if (s.getName().indexOf('page') !== 0) tempSS.deleteSheet(s); });
+    SpreadsheetApp.flush();
+
+    const url = 'https://docs.google.com/spreadsheets/d/' + tempId + '/export?'
+      + 'format=pdf&size=A4&portrait=true&fitw=true&scale=4'
+      + '&gridlines=false&printtitle=false&sheetnames=false&pagenumbers=false&fzr=false'
+      + '&top_margin=0.3&bottom_margin=0.3&left_margin=0.3&right_margin=0.3';
+    const resp = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } });
+    const base64 = Utilities.base64Encode(resp.getContent());
+    return { success: true, pdfBase64: base64, fileName: '停止記録_' + cycleID + '.pdf' };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    try { DriveApp.getFileById(tempId).setTrashed(true); } catch (e) {}
+  }
+}
+
+function _printHM(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+function _printMD(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return (d.getMonth() + 1) + '/' + d.getDate();
+}
+
+function _fillPrintPage(sh, cycle, pageRows, pageNo, isFirstPage) {
+  const md = String(cycle.productionDate).split('-');
+  const DASH = '―';
+
+  // タイトル・製造日・ページ番号
+  sh.getRange('A1').setValue('充填停止記録【' + cycle.line + '　ライン】');
+  sh.getRange('C4').setValue(parseInt(md[0], 10));
+  sh.getRange('F4').setValue(parseInt(md[1], 10));
+  sh.getRange('H4').setValue(parseInt(md[2], 10));
+  sh.getRange('P4').setValue('No. ' + pageNo);
+
+  // 製造開始（行7 E列）: 1ページ目のみ実時刻、以降は ―
+  sh.getRange('E7').setValue(isFirstPage && cycle.productionStartAt ? _printHM(cycle.productionStartAt) : DASH);
+
+  // データ行 8〜30 を列ごとにまとめて流し込み（℃/分のラベル列 H/J/L は触らない）
+  const N = PRINT_STOPS_PER_PAGE;
+  const colA = [], colC = [], colE = [], colG = [], colI = [], colK = [],
+        colM = [], colN = [], colO = [], colQ = [], colR = [], colS = [];
+  for (let i = 0; i < N; i++) {
+    const rec = pageRows[i];
+    if (!rec) {
+      colA.push([DASH]); colC.push([DASH]); colE.push([DASH]); colG.push([DASH]);
+      colI.push([DASH]); colK.push([DASH]); colM.push([DASH]); colN.push([DASH]);
+      colO.push([DASH]); colQ.push([DASH]); colR.push([DASH]); colS.push([DASH]);
+    } else if (rec._end) {
+      colA.push([_printMD(rec.stopAt)]); colC.push([_printHM(rec.stopAt)]); colE.push([DASH]);
+      colG.push([DASH]); colI.push([DASH]); colK.push([DASH]);
+      colM.push(['製造終了']); colN.push([DASH]); colO.push([DASH]);
+      colQ.push([DASH]); colR.push([DASH]); colS.push([DASH]);
+    } else {
+      colA.push([_printMD(rec.stopAt)]);
+      colC.push([_printHM(rec.stopAt)]);
+      colE.push([rec.startAt ? _printHM(rec.startAt) : DASH]);
+      colG.push([(rec.ufTemp !== '' && rec.ufTemp != null) ? rec.ufTemp : DASH]);
+      colI.push([(rec.teaTemp !== '' && rec.teaTemp != null) ? rec.teaTemp : DASH]);
+      colK.push([(rec.minutes != null && rec.minutes !== '') ? rec.minutes : DASH]);
+      colM.push([rec.equipment || DASH]);
+      colN.push([rec.reason || DASH]);
+      colO.push([rec.action || DASH]);
+      colQ.push([rec.charge || DASH]);
+      colR.push([rec.crEntry || DASH]);
+      colS.push([(rec.wastage !== '' && rec.wastage != null) ? rec.wastage : DASH]);
+    }
+  }
+  const startRow = 8;
+  sh.getRange(startRow, 1,  N, 1).setValues(colA); // A
+  sh.getRange(startRow, 3,  N, 1).setValues(colC); // C
+  sh.getRange(startRow, 5,  N, 1).setValues(colE); // E
+  sh.getRange(startRow, 7,  N, 1).setValues(colG); // G
+  sh.getRange(startRow, 9,  N, 1).setValues(colI); // I
+  sh.getRange(startRow, 11, N, 1).setValues(colK); // K
+  sh.getRange(startRow, 13, N, 1).setValues(colM); // M
+  sh.getRange(startRow, 14, N, 1).setValues(colN); // N
+  sh.getRange(startRow, 15, N, 1).setValues(colO); // O
+  sh.getRange(startRow, 17, N, 1).setValues(colQ); // Q
+  sh.getRange(startRow, 18, N, 1).setValues(colR); // R
+  sh.getRange(startRow, 19, N, 1).setValues(colS); // S
+
+  // 特記事項（1ページ目のみ）
+  if (isFirstPage) sh.getRange('A32').setValue(cycle.notes || '');
+}
+
+/**
  * 日報（サイクル）丸ごと削除（リーダー以上のみ）
  * 関連する停止ログも全て削除
  * payload: { cycleID }
