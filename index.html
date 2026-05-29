@@ -44,7 +44,7 @@
   }
   .header-bar {
     display: grid;
-    grid-template-columns: 1fr auto auto 1fr;
+    grid-template-columns: 1fr auto auto auto 1fr;
     align-items: center;
     gap: 12px;
   }
@@ -71,6 +71,60 @@
     background: var(--surface);
   }
   .analysis-link:hover { background: var(--accent-bg, #eff6ff); }
+  .help-btn {
+    justify-self: center;
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface); color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 8px 16px; min-height: 40px;
+    border-radius: 8px; font-weight: 700; font-size: 14px;
+    cursor: pointer; white-space: nowrap;
+  }
+  .help-btn:hover { background: var(--accent-bg, #eff6ff); }
+
+  /* ── 使い方モーダル ── */
+  .help-section { margin-bottom: 16px; }
+  .help-section h3 {
+    font-size: 15px; margin: 0 0 6px; color: var(--accent);
+    border-left: 4px solid var(--accent); padding-left: 8px;
+  }
+  .help-section p, .help-section li {
+    font-size: 13px; line-height: 1.7; color: var(--text); margin: 2px 0;
+  }
+  .help-section ul { margin: 4px 0; padding-left: 20px; }
+  .help-tour-cta {
+    display: block; width: 100%; margin-bottom: 16px;
+    background: var(--accent); color: #fff; border: none;
+    padding: 14px; border-radius: 10px;
+    font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  .help-tour-cta:hover { background: var(--accent-dark, #1d4ed8); }
+
+  /* ── ガイドツアー ── */
+  .tour-highlight {
+    position: relative; z-index: 1001 !important;
+    box-shadow: 0 0 0 4px #2563eb, 0 0 0 9999px rgba(0,0,0,0.65) !important;
+    border-radius: 8px;
+  }
+  .tour-tooltip {
+    position: fixed; z-index: 1002;
+    background: #fff; border-radius: 12px; padding: 16px 18px;
+    max-width: 320px; width: calc(100% - 32px);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+  }
+  .tour-tooltip-title { font-size: 16px; font-weight: 800; margin-bottom: 6px; color: var(--accent); }
+  .tour-tooltip-body { font-size: 13px; line-height: 1.7; color: var(--text); margin-bottom: 14px; white-space: pre-wrap; }
+  .tour-tooltip-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .tour-progress { font-size: 12px; color: var(--muted); }
+  .tour-btns { display: flex; gap: 6px; }
+  .tour-btn {
+    padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  }
+  .tour-btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tour-backdrop-center {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 1000;
+  }
 
   /* 部署ピル: 大きめ＆過度に角丸 */
   .header-right {
@@ -347,6 +401,7 @@
     <h1>充填停止記録</h1>
     <button class="new-cycle-btn" onclick="showNewCycleModal()">+ 日報新規作成</button>
     <a class="analysis-link" href="<?= appUrl ?>?page=analysis&line=2L" title="分析ページへ">📊 分析</a>
+    <button class="help-btn" onclick="openHelp()" title="使い方ガイド">❓ 使い方</button>
     <div class="header-right">
       <span class="dept-pill empty" id="dept-pill" onclick="showDeptModal()">部署を選択</span>
       <button class="reload-btn" id="reload-btn" onclick="reloadAll()" title="一覧を更新">
@@ -479,6 +534,74 @@
       <button class="btn-ghost" onclick="closeModal('delete-cycle-modal')">キャンセル</button>
       <button class="btn-danger" id="delete-cycle-confirm-btn" onclick="doDeleteCycle()">削除する</button>
     </div>
+  </div>
+</div>
+
+<!-- 使い方モーダル -->
+<div class="modal-backdrop" id="help-modal" style="display: none;">
+  <div class="modal" style="max-width: 560px;">
+    <div class="modal-header">充填停止記録アプリ — 使い方</div>
+    <div class="modal-body">
+      <button class="help-tour-cta" onclick="startTour()">▶ 画面ガイドツアーを開始</button>
+
+      <div class="help-section">
+        <h3>1. 部署を選択</h3>
+        <p>初回は右上の「部署を選択」から、この端末で使う部署を選びます。記録に部署が残ります。</p>
+      </div>
+      <div class="help-section">
+        <h3>2. 日報を新規作成</h3>
+        <p>「＋ 日報新規作成」から、ライン（2L / 500ml）と製造日を選んで日報を作ります。同じ日・同じラインで重複すると自動で v2 として別に作られます。</p>
+      </div>
+      <div class="help-section">
+        <h3>3. 一覧の見方</h3>
+        <ul>
+          <li>左が <b>2L</b>、右が <b>500ml</b>。日付ごとに新しい順で並びます。</li>
+          <li>カードをタップでその日報の停止記録ページへ。</li>
+          <li>「停止 ○件 / 合計 ○分」で稼働状況がわかります。</li>
+          <li>15秒ごとに自動更新。右上の <b>↻</b> で手動更新も可能。</li>
+        </ul>
+      </div>
+      <div class="help-section">
+        <h3>4. 停止記録ページ</h3>
+        <ul>
+          <li><b>製造時間</b>: 開始（青）/ 終了（赤）の時刻を選択。</li>
+          <li><b>＋停止</b>: 停止日・ストップ時刻を入れて「追加」。現在時刻が自動入力されています。右の「商品」で現在の生産商品を選べます。</li>
+          <li>追加した停止記録に、停止設備・理由・対応内容・担当・温度・CR入室・廃棄本数を入力。各項目は入力後すぐ自動保存（右の丸が 黄→青）。</li>
+          <li><b>商品切替</b>: 停止設備に「商品切替 / 品種切替」を含めると、切替後の商品を選ぶ欄が出ます。</li>
+          <li>500ml はフィラー温度1つ、2L は UF / TEA の2つ。</li>
+        </ul>
+      </div>
+      <div class="help-section">
+        <h3>5. 日報の確定</h3>
+        <p>全項目を入力したら「日報を確定」。未入力があれば一覧で教えてくれます。確定後は一般ユーザーは編集不可、<b>リーダー以上</b>のみ編集・解除できます。</p>
+      </div>
+      <div class="help-section">
+        <h3>6. 分析・CSV出力</h3>
+        <p>上部「📊 分析」から、月別の停止設備別／停止理由別グラフ（前月比つき）と、全停止記録の一覧を確認。CSV出力もできます。</p>
+      </div>
+      <div class="help-section">
+        <h3>7. 権限について</h3>
+        <p>確定済み日報の編集・解除、日報そのものの削除は <b>リーダー以上</b>の権限が必要です（管理者名簿で管理）。</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" onclick="closeModal('help-modal')">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- ガイドツアー用 -->
+<div class="tour-backdrop-center" id="tour-backdrop" style="display: none;"></div>
+<div class="tour-tooltip" id="tour-tooltip" style="display: none;">
+  <div class="tour-tooltip-title" id="tour-title"></div>
+  <div class="tour-tooltip-body" id="tour-body"></div>
+  <div class="tour-tooltip-foot">
+    <span class="tour-progress" id="tour-progress"></span>
+    <span class="tour-btns">
+      <button class="tour-btn" id="tour-prev" onclick="tourPrev()">前へ</button>
+      <button class="tour-btn tour-btn-primary" id="tour-next" onclick="tourNext()">次へ</button>
+      <button class="tour-btn" onclick="endTour()">終了</button>
+    </span>
   </div>
 </div>
 
@@ -903,6 +1026,84 @@ function reloadAll() {
 
 function openCycle(cycleID) {
   window.top.location.href = APP_URL + '?cycle=' + encodeURIComponent(cycleID);
+}
+
+// =====================================================
+//  使い方モーダル & ガイドツアー
+// =====================================================
+function openHelp() { document.getElementById('help-modal').style.display = 'flex'; }
+
+const TOUR_STEPS = [
+  { sel: null, title: 'ようこそ', body: '充填停止記録アプリの主な画面を順番にご案内します。\n「次へ」で進みます。' },
+  { sel: '#dept-pill', title: '① 部署を選択', body: 'まずこの端末で使う部署を選びます。記録に部署が残ります。' },
+  { sel: '.new-cycle-btn', title: '② 日報を新規作成', body: 'ライン(2L/500ml)と製造日を選んで日報を作成します。' },
+  { sel: '.line-column[data-line="2L"] .line-header', title: '③ 一覧の見方', body: '左が2L、右が500ml。日付ごとに新しい順で並びます。カードをタップで停止記録ページへ。' },
+  { sel: '.analysis-link', title: '④ 分析・CSV', body: '月別の停止グラフ(前月比つき)と全記録一覧。CSV出力もここから。' },
+  { sel: '#reload-btn', title: '⑤ 更新', body: '15秒ごとに自動更新されますが、すぐ最新にしたい時はここを押します。' },
+  { sel: '.help-btn', title: '⑥ 使い方', body: 'この説明はいつでもここから開けます。\n停止記録ページの詳しい使い方は「使い方」モーダル内に記載しています。' }
+];
+let tourIndex = 0;
+let tourPrevHighlight = null;
+
+function startTour() {
+  closeModal('help-modal');
+  tourIndex = 0;
+  document.getElementById('tour-backdrop').style.display = 'block';
+  document.getElementById('tour-tooltip').style.display = 'block';
+  showTourStep();
+}
+function endTour() {
+  if (tourPrevHighlight) { tourPrevHighlight.classList.remove('tour-highlight'); tourPrevHighlight = null; }
+  document.getElementById('tour-backdrop').style.display = 'none';
+  document.getElementById('tour-tooltip').style.display = 'none';
+}
+function tourNext() {
+  if (tourIndex < TOUR_STEPS.length - 1) { tourIndex++; showTourStep(); }
+  else endTour();
+}
+function tourPrev() {
+  if (tourIndex > 0) { tourIndex--; showTourStep(); }
+}
+function showTourStep() {
+  const step = TOUR_STEPS[tourIndex];
+  const backdrop = document.getElementById('tour-backdrop');
+  const tip = document.getElementById('tour-tooltip');
+
+  if (tourPrevHighlight) { tourPrevHighlight.classList.remove('tour-highlight'); tourPrevHighlight = null; }
+
+  document.getElementById('tour-title').textContent = step.title;
+  document.getElementById('tour-body').textContent = step.body;
+  document.getElementById('tour-progress').textContent = (tourIndex + 1) + ' / ' + TOUR_STEPS.length;
+  document.getElementById('tour-prev').style.visibility = tourIndex === 0 ? 'hidden' : 'visible';
+  document.getElementById('tour-next').textContent = (tourIndex === TOUR_STEPS.length - 1) ? '完了' : '次へ';
+
+  const el = step.sel ? document.querySelector(step.sel) : null;
+  if (el) {
+    // スポットライト式: 対象だけ明るく、周りを暗く
+    backdrop.style.display = 'none';   // ハイライトの box-shadow が背景を兼ねる
+    el.classList.add('tour-highlight');
+    tourPrevHighlight = el;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // ツールチップ位置: 対象の下、はみ出すなら上
+    setTimeout(() => {
+      const r = el.getBoundingClientRect();
+      const tipH = tip.offsetHeight || 160;
+      let top = r.bottom + 12;
+      if (top + tipH > window.innerHeight - 10) top = Math.max(10, r.top - tipH - 12);
+      let left = r.left + r.width / 2 - tip.offsetWidth / 2;
+      left = Math.max(10, Math.min(left, window.innerWidth - tip.offsetWidth - 10));
+      tip.style.top = top + 'px';
+      tip.style.left = left + 'px';
+    }, 320);
+  } else {
+    // 中央表示（イントロ）
+    backdrop.style.display = 'block';
+    tip.style.top = '50%';
+    tip.style.left = '50%';
+    tip.style.transform = 'translate(-50%, -50%)';
+    return;
+  }
+  tip.style.transform = 'none';
 }
 
 // =====================================================
