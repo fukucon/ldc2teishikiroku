@@ -1223,7 +1223,7 @@ function api_printCycle(payload) {
     SpreadsheetApp.flush();
 
     const url = 'https://docs.google.com/spreadsheets/d/' + tempId + '/export?'
-      + 'format=pdf&size=A4&portrait=true&fitw=true&scale=4'
+      + 'format=pdf&size=A4&portrait=false&fitw=true&scale=4'
       + '&gridlines=false&printtitle=false&sheetnames=false&pagenumbers=false&fzr=false'
       + '&top_margin=0.3&bottom_margin=0.3&left_margin=0.3&right_margin=0.3';
     const resp = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } });
