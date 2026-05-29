@@ -59,6 +59,20 @@
   .cycle-title .id  {
     font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace;
   }
+  .notes-btn {
+    background: var(--surface); color: var(--accent);
+    border: 1px solid var(--accent); border-radius: 6px;
+    padding: 4px 10px; font-size: 12px; font-weight: 700;
+    cursor: pointer; white-space: nowrap;
+  }
+  .notes-btn:hover { background: #eff6ff; }
+  .notes-btn .dot { color: var(--error); font-weight: 700; }
+  .notes-modal-head { font-size: 16px; font-weight: 800; margin-bottom: 10px; color: var(--text); }
+  #notes-textarea {
+    width: 100%; font: inherit; font-size: 14px;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    resize: vertical; box-sizing: border-box;
+  }
 
   /* ── 汎用モーダル ── */
   .modal-overlay {
@@ -791,6 +805,19 @@
   </div>
 </div>
 
+<!-- 特記事項 編集モーダル -->
+<div class="modal-overlay hidden" id="notes-modal" onclick="if(event.target.id==='notes-modal')closeNotesModal()">
+  <div class="modal-dialog" style="max-width: 460px;">
+    <div class="notes-modal-head">特記事項</div>
+    <textarea id="notes-textarea" rows="6" placeholder="特記事項を入力…"></textarea>
+    <span class="save-indicator" id="notes-save" style="display:inline-block; margin:6px 0;"></span>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeNotesModal()">キャンセル</button>
+      <button class="btn-primary" id="notes-save-btn" onclick="saveNotes()">保存</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const APP_URL = '<?= appUrl ?>';
 const CYCLE_ID = '<?= cycleID ?>';
@@ -1155,7 +1182,8 @@ function renderAll() {
   titleEl.innerHTML = `
     <span class="line-badge">${c.line}</span>
     <span class="date">${parseInt(md[1],10)}/${parseInt(md[2],10)}</span>
-    <span class="id">${c.cycleID}</span>`;
+    <span class="id">${c.cycleID}</span>
+    <button class="notes-btn" onclick="openNotesModal()">📝 特記事項${c.notes ? ' <span class="dot">●</span>' : ''}</button>`;
 
   // 製造開始/終了の初期化
   initProdTimes();
@@ -1485,6 +1513,42 @@ function saveCycleProduct() {
 //   - 確定済 + 権限マスタの「リーダー」「全権」のみ編集 / 解除可能
 //   - それ以外は読み取り専用
 // =====================================================
+// =====================================================
+//  特記事項 編集
+// =====================================================
+function openNotesModal() {
+  const ta = document.getElementById('notes-textarea');
+  ta.value = (STATE.cycle && STATE.cycle.notes) || '';
+  setSaveIndicator('notes-save', '');
+  document.getElementById('notes-modal').classList.remove('hidden');
+  setTimeout(() => ta.focus(), 50);
+}
+function closeNotesModal() {
+  document.getElementById('notes-modal').classList.add('hidden');
+}
+function saveNotes() {
+  const val = document.getElementById('notes-textarea').value;
+  const btn = document.getElementById('notes-save-btn');
+  btn.disabled = true;
+  setSaveIndicator('notes-save', 'saving');
+  gas('api_updateCycleField', { cycleID: STATE.cycle.cycleID, field: 'notes', value: val }).then(res => {
+    btn.disabled = false;
+    if (!res.success) {
+      setSaveIndicator('notes-save', 'error');
+      showModal(res.error || '保存失敗', '⚠');
+      return;
+    }
+    STATE.cycle.notes = val;
+    setSaveIndicator('notes-save', 'saved');
+    renderAll();   // 特記事項ボタンの●表示を更新
+    setTimeout(closeNotesModal, 400);
+  }).catch(err => {
+    btn.disabled = false;
+    setSaveIndicator('notes-save', 'error');
+    showModal('通信エラー: ' + (err.message || err), '⚠');
+  });
+}
+
 function updateConfirmUI() {
   const c = STATE.cycle;
   const area = document.getElementById('confirm-area');
