@@ -1254,7 +1254,9 @@ const AC = {
   items: [],
   activeIdx: -1,
   // タップ確定中フラグ: blur と pointer 順序による誤閉じを防ぐ
-  picking: false
+  picking: false,
+  // パネル上を指でタッチ中（スクロール含む）。close を抑止する
+  touchingPanel: false
 };
 
 function acEnsurePanel() {
@@ -1355,14 +1357,14 @@ document.addEventListener('focusout', (e) => {
   if (t && t === AC.input) {
     // pointerdown→focusout の順だと AC.picking が true。閉じてからピック実行。
     if (AC.picking) return;
-    // 少し遅延して、パネル上タップで閉じきってしまうのを防ぐ
+    // 少し遅延して、パネル上タップ/スクロールで閉じきってしまうのを防ぐ
     setTimeout(() => {
-      if (!AC.picking) acClose();
+      if (!AC.picking && !AC.touchingPanel) acClose();
     }, 120);
   }
 });
-// パネル上のタップを inputs の blur より先に拾う
-['pointerdown','mousedown','touchstart'].forEach(ev => {
+// マウス/ペン: pointerdown / mousedown で input の blur を抑止しつつ pick
+['pointerdown','mousedown'].forEach(ev => {
   document.addEventListener(ev, (e) => {
     const panel = acEnsurePanel();
     if (!panel) return;
@@ -1374,6 +1376,48 @@ document.addEventListener('focusout', (e) => {
     }
   }, { passive: false });
 });
+// タッチ: Safari でスクロールを殺さないため touchstart は受動 (preventDefault しない)。
+// touchstart 〜 touchend の移動量が小さければタップ確定 = pick。
+// パネル上の指接触中は AC.touchingPanel を立てて、focusout の close を抑止する
+// （スクロール中に input から focus が外れても閉じない）。
+let _acTouch = null;
+document.addEventListener('touchstart', (e) => {
+  const panel = acEnsurePanel();
+  if (!panel) return;
+  const inPanel = e.target && e.target.closest && e.target.closest('#ac-panel');
+  if (!inPanel) { _acTouch = null; return; }
+  AC.touchingPanel = true;
+  const item = e.target.closest && e.target.closest('.ac-item');
+  if (item) {
+    const t = e.touches[0];
+    _acTouch = { x: t.clientX, y: t.clientY, idx: parseInt(item.getAttribute('data-idx'), 10) };
+  } else {
+    _acTouch = null;
+  }
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  // パネル上のスクロール中は close を抑止し続ける
+  if (e.target && e.target.closest && e.target.closest('#ac-panel')) {
+    AC.touchingPanel = true;
+  }
+  // 大きく動いたら「タップ」ではないので pick 候補から外す
+  if (_acTouch) {
+    const t = e.touches[0];
+    if (Math.abs(t.clientX - _acTouch.x) > 10 || Math.abs(t.clientY - _acTouch.y) > 10) {
+      _acTouch = null;
+    }
+  }
+}, { passive: true });
+document.addEventListener('touchend', (e) => {
+  // 解除はわずかに遅らせ、focusout の遅延 close を逃れる
+  setTimeout(() => { AC.touchingPanel = false; }, 200);
+  if (!_acTouch) return;
+  const t = e.changedTouches[0];
+  if (Math.abs(t.clientX - _acTouch.x) < 10 && Math.abs(t.clientY - _acTouch.y) < 10) {
+    acPick(_acTouch.idx);
+  }
+  _acTouch = null;
+}, { passive: true });
 // キーボード操作
 document.addEventListener('keydown', (e) => {
   if (!AC.input || !AC.panel || !AC.panel.classList.contains('open')) return;
