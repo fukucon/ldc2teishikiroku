@@ -1315,7 +1315,8 @@ function _fillPrintPage(sh, cycle, pageRows, pageNo, isFirstPage) {
     sh.getRange('G6').setValue('フィラー温度');                              // UF ヘッダー差し替え
     sh.getRange('G7').setValue('');                                            // 前回の誤上書きを取り消し
     sh.getRange('I6:J30').setFontColor('#ffffff');                            // TEA データ + ℃ + ヘッダーを白文字
-    sh.getRange('J6:J30').setBorder(null, null, null, false, null, null);     // J 列の右罫線を除去
+    // TEA 列ブロック (I/J) の右側と I-J 内部の縦線を除去
+    sh.getRange('I6:J30').setBorder(null, null, null, false, false, null);
   }
 }
 
