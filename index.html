@@ -1162,7 +1162,7 @@ function showDeleteCycleModal(cycleID) {
     }
   });
   document.getElementById('delete-cycle-info').textContent = info;
-  openModal('delete-cycle-modal');
+  document.getElementById('delete-cycle-modal').style.display = 'flex';
 }
 
 function doDeleteCycle() {

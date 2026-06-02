@@ -2054,11 +2054,34 @@ function saveRecordField(logID, fieldKey, value) {
   const trimmed = (typeof value === 'string') ? value.trim() : value;
   const fields = {};
   fields[fieldKey] = trimmed;
+
+  // 商品切替で newProductID が選ばれたら、対応内容を "旧→新" に自動入力
+  //   - 対応内容が空 or 既存の "X→Y" 形式なら上書き（手書き入力は保護）
+  let autoAction = null;
+  if (fieldKey === 'newProductID') {
+    const rec = STATE.stopRecords.find(function(r) { return r.logID === logID; });
+    if (rec) {
+      const beforeName = productName(computeProductAt(rec.stopAt, false));
+      const afterName  = productName(trimmed);
+      if (beforeName && afterName) {
+        const cur = (rec.action || '').trim();
+        const isAutoFormat = /^.+\s*→\s*.+$/.test(cur);
+        if (!cur || isAutoFormat) {
+          autoAction = beforeName + '→' + afterName;
+          fields.action = autoAction;
+        }
+      }
+    }
+  }
+
   gas('api_updateStopRecordFields', { logID: logID, fields: fields }).then(function(res) {
     if (!res.success) { setRecInd(indEl, 'error', res.error || 'エラー'); return; }
     setRecInd(indEl, 'saved', '保存');
     const rec = STATE.stopRecords.find(function(r) { return r.logID === logID; });
-    if (rec) rec[fieldKey] = trimmed;
+    if (rec) {
+      rec[fieldKey] = trimmed;
+      if (autoAction !== null) rec.action = autoAction;
+    }
     // 商品切替の保存 or 停止設備変更時は再描画して各行の商品バッジを更新
     if (fieldKey === 'newProductID' || fieldKey === 'equipment') {
       renderRecordList();
