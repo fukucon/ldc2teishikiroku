@@ -1274,7 +1274,7 @@ const AC_SOURCES = {
   'uf-temp':        () => ['50','51','52','53','54','55','56','57','58','59','60'],
   'tea-temp':       () => ['82','83','84','85','86','87','88','89','90','91','92'],
   'filler-temp-500':() => ['65'],
-  wastage:          () => ['100','150']
+  wastage:          () => ['—','100','150']
 };
 
 const AC = {
@@ -1348,10 +1348,12 @@ function acPosition() {
 
 function acPick(idx) {
   if (idx < 0 || idx >= AC.items.length) return;
-  const v = AC.items[idx];
+  let v = AC.items[idx];
   const input = AC.input;
   if (!input) return;
   AC.picking = true;
+  // 廃棄本数の「—」は 0 として保存（input type=number で非数値は入らないため）
+  if (input.dataset.ac === 'wastage' && v === '—') v = '0';
   input.value = v;
   // 既存ロジックを起こす
   input.dispatchEvent(new Event('input', { bubbles: true }));
