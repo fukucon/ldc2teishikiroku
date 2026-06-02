@@ -1315,6 +1315,8 @@ function acClose() {
 function acFilter(all, q) {
   q = (q || '').toString().trim().toLowerCase();
   if (!q) return all.slice(0, 50);
+  // 値がそのまま候補と一致しているときはフィルタせず全件表示（変更できるように）
+  if (all.some(v => String(v).toLowerCase() === q)) return all.slice(0, 50);
   const starts = [], contains = [];
   for (const v of all) {
     const lv = v.toLowerCase();
@@ -1348,12 +1350,10 @@ function acPosition() {
 
 function acPick(idx) {
   if (idx < 0 || idx >= AC.items.length) return;
-  let v = AC.items[idx];
+  const v = AC.items[idx];
   const input = AC.input;
   if (!input) return;
   AC.picking = true;
-  // 廃棄本数の「—」は 0 として保存（input type=number で非数値は入らないため）
-  if (input.dataset.ac === 'wastage' && v === '—') v = '0';
   input.value = v;
   // 既存ロジックを起こす
   input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1888,6 +1888,10 @@ function renderRecordList() {
   const dayOpts   = range(1, 31).map(n => `<option value="${n}">${n}</option>`).join('');
   // 未入力判定: 空文字 / null / undefined / 空白のみ → wrap-empty
   const emptyCls = (v) => (v == null || (typeof v === 'string' && v.trim() === '')) ? ' wrap-empty' : '';
+  // 廃棄本数表示: 0 は「—」(なし) として表示、未設定は空
+  const wastageDisplay = (r) =>
+    r.wastage === 0 || r.wastage === '0' ? '—'
+    : (r.wastage !== '' && r.wastage != null ? String(r.wastage) : '');
   const MARK = '<span class="field-empty-mark" aria-label="未入力">!</span>';
   list.innerHTML = records.map((r) => {
     const stop = new Date(r.stopAt);
@@ -2041,11 +2045,11 @@ function renderRecordList() {
           </div>
           <div>
             <div class="field-label">廃棄本数</div>
-            <div class="field-input-wrap${emptyCls(String(r.wastage || ''))}">
-              <input type="number" class="record-field" min="0" placeholder="0"
+            <div class="field-input-wrap${wastageDisplay(r) === '' ? ' wrap-empty' : ''}">
+              <input type="text" class="record-field" inputmode="numeric" placeholder="0"
                 data-ac="wastage"
                 data-log-id="${lid}" data-field="wastage"
-                value="${r.wastage || ''}"
+                value="${wastageDisplay(r)}"
                 onblur="saveRecordField('${lid}', 'wastage', this.value)">
               <span class="rec-ind" data-ind="${lid}-wastage"></span>
               ${MARK}
@@ -2092,7 +2096,12 @@ function saveRecordField(logID, fieldKey, value) {
     return;
   }
 
-  const trimmed = (typeof value === 'string') ? value.trim() : value;
+  let trimmed = (typeof value === 'string') ? value.trim() : value;
+  // 廃棄本数: 「—」や非数値は 0 に正規化して保存
+  if (fieldKey === 'wastage') {
+    const n = parseInt(trimmed, 10);
+    trimmed = isNaN(n) ? '0' : String(n);
+  }
   const fields = {};
   fields[fieldKey] = trimmed;
 

@@ -624,7 +624,10 @@ function api_updateStopRecordFields(payload) {
           const colName = fieldMap[key];
           if (!colName) return;
           let value = fields[key];
-          if (key === 'wastage') value = value ? parseInt(value, 10) : 0;
+          if (key === 'wastage') {
+            const n = parseInt(value, 10);
+            value = isNaN(n) ? 0 : n;   // 「—」など非数値は 0 として保存
+          }
           if (value == null) value = '';
           sheet.getRange(row, LC[colName] + 1).setValue(value);
         });
