@@ -597,6 +597,16 @@
     min-width: 52px; text-align: center;
   }
   .record-minutes.pending { color: var(--muted); background: #f3f4f6; }
+  /* スタート時間の右にある「現」ボタン: 現在時刻反映 */
+  .now-btn {
+    font-size: 11px; font-weight: 700;
+    color: #1d4ed8; background: #eff6ff;
+    border: 1px solid #bfdbfe; border-radius: 5px;
+    padding: 2px 6px; min-height: 26px;
+    cursor: pointer; flex-shrink: 0;
+  }
+  .now-btn:hover { background: #dbeafe; }
+  .now-btn:active { background: #bfdbfe; }
 
   .record-fields-grid {
     display: grid;
@@ -1953,6 +1963,7 @@ function renderRecordList() {
             <span class="colon">:</span>
             <select class="record-field" data-log-id="${lid}" data-field="startMinute" onchange="saveRecordStartTime('${lid}')">${minuteOptionsHtml(startMn, true)}</select>
           </span>
+          <button class="now-btn" onclick="setRecordStartNow('${lid}')" title="現在時刻をスタート時間に反映">現</button>
           <span class="rec-ind" data-ind="${lid}-startTime"></span>
           <span class="record-minutes ${hasStart ? '' : 'pending'}" data-min="${lid}">${minutesStr}</span>
           ${productCell}
@@ -2186,6 +2197,19 @@ function saveRecordStartTime(logID) {
     card.querySelector('[data-field="startMinute"]')
   );
   saveRecordField(logID, 'startTime', t);
+}
+
+// 「現」ボタン: 現在時刻 (時:分) を スタート時間 に入れて保存
+function setRecordStartNow(logID) {
+  const card = document.querySelector('.record-item[data-log-id="' + logID + '"]');
+  if (!card) return;
+  const hSel = card.querySelector('[data-field="startHour"]');
+  const mSel = card.querySelector('[data-field="startMinute"]');
+  if (!hSel || !mSel) return;
+  const now = new Date();
+  hSel.value = String(now.getHours());
+  mSel.value = String(now.getMinutes());
+  saveRecordStartTime(logID);
 }
 
 function selectRecordRadio(el, logID) {

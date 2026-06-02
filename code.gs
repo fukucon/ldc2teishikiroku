@@ -14,8 +14,9 @@ const CONFIG = {
   MASTER_SS_ID: '1ERZY57Kzib_91nz5UUx_U-a91gde6zeXYe_RkH_fMa4',
 
   // 年シャーディング対象
-  SHEET_PREFIX_HEADER: '日報ヘッダー_',
-  SHEET_PREFIX_LOG:    '停止ログ_',
+  SHEET_PREFIX_HEADER:  '日報ヘッダー_',
+  SHEET_PREFIX_LOG:     '停止ログ_',
+  SHEET_PREFIX_HISTORY: '変更履歴_',     // 既存値の上書き履歴（旧値≠新値かつ旧値が空でないときのみ）
 
   // 単一シート
   SHEET_EQUIPMENT:  '停止設備マスタ',
@@ -109,6 +110,18 @@ LOG_COLS.forEach((n, i) => LC[n] = i);
 
 // マスタ（自由入力 + 自動追加）
 const MASTER_FREE_COLS = ['内容', '使用回数', '初回追加日時', '最終使用日時', '有効'];
+
+// 変更履歴シート列
+const HISTORY_COLS = [
+  '日時',         // 0  記録時刻
+  'ユーザー',     // 1  操作者メール
+  'サイクルID',   // 2
+  'ログID',       // 3  サイクル本体の変更なら空
+  '対象',         // 4  'stop' / 'cycle'
+  'フィールド',   // 5  内部キー名 (例: equipment, reason, startTime, notes)
+  '旧値',         // 6  上書き前の値（文字列化）
+  '新値'          // 7  上書き後の値（文字列化）
+];
 
 // =====================================================
 //  doGet: HTMLページを返す
@@ -328,19 +341,27 @@ function api_updateCycleField(payload) {
     for (let i = 0; i < ids.length; i++) {
       if (ids[i][0] === cycleID) {
         const row = i + 2;
+        let oldValue, newValue;
         if (field === 'productID') {
           // productID 設定時はマスターを引いて 商品名/種別/通称 も同時保存
           const p = _resolveProduct(value || '');
+          oldValue = sheet.getRange(row, HC['商品ID'] + 1).getValue();
           sheet.getRange(row, HC['商品ID']   + 1).setValue(p.id);
           sheet.getRange(row, HC['商品名']   + 1).setValue(p.name);
           sheet.getRange(row, HC['商品種別'] + 1).setValue(p.kind);
           sheet.getRange(row, HC['商品通称'] + 1).setValue(p.nickname);
+          newValue = p.id;
         } else {
           const storedValue = (value && (field === 'productionStartAt' || field === 'productionEndAt'))
             ? new Date(value) : value;
+          oldValue = sheet.getRange(row, HC[colName] + 1).getValue();
           sheet.getRange(row, HC[colName] + 1).setValue(storedValue);
+          newValue = storedValue;
         }
         sheet.getRange(row, HC['最終更新'] + 1).setValue(new Date());
+        _recordChanges(cycleID, '', 'cycle', [
+          { field: field, oldValue: oldValue, newValue: newValue }
+        ]);
         return { success: true };
       }
     }
@@ -462,6 +483,7 @@ function api_updateStopRecordEnd(payload) {
         const row = i + 2;
         const stopAt = data[i][LC['ストップ日時']];
         const oldMinutes = Number(data[i][LC['停止分数']]) || 0;
+        const oldStartAt = data[i][LC['スタート日時']];
 
         let newStartAt = '';
         let newMinutes = 0;
@@ -482,6 +504,11 @@ function api_updateStopRecordEnd(payload) {
 
         // 親の 合計停止分 を差分更新
         _updateParentCounts(cycleID, 0, newMinutes - oldMinutes);
+
+        // 履歴: スタート日時の上書き
+        _recordChanges(cycleID, logID, 'stop', [
+          { field: 'startTime', oldValue: oldStartAt, newValue: newStartAt }
+        ]);
 
         return {
           success: true,
@@ -535,6 +562,7 @@ function api_updateStopRecordStop(payload) {
         const row = i + 2;
         const oldMinutes = Number(data[i][LC['停止分数']]) || 0;
         const startAt = data[i][LC['スタート日時']];
+        const oldStop = data[i][LC['ストップ日時']];
 
         let newStartAt = '';
         let newMinutes = 0;
@@ -553,6 +581,11 @@ function api_updateStopRecordStop(payload) {
         sheet.getRange(row, LC['停止分数']     + 1).setValue(newMinutes);
 
         _updateParentCounts(cycleID, 0, newMinutes - oldMinutes);
+
+        // 履歴: ストップ日時の上書き
+        _recordChanges(cycleID, logID, 'stop', [
+          { field: 'stopAt', oldValue: oldStop, newValue: newStop }
+        ]);
 
         return {
           success: true,
@@ -611,14 +644,19 @@ function api_updateStopRecordFields(payload) {
     for (let i = 0; i < ids.length; i++) {
       if (ids[i][0] === logID) {
         const row = i + 2;
+        // 旧値を読み取って履歴判定に使う
+        const oldRow = sheet.getRange(row, 1, 1, LOG_COLS.length).getValues()[0];
+        const changes = [];
         Object.keys(fields).forEach(key => {
           if (key === 'newProductID') {
             // 商品ID指定時はマスターを引いて切替後の名/種別/通称も同時保存
             const p = _resolveProduct(fields[key] || '');
+            const oldId = oldRow[LC['切替後商品ID']];
             sheet.getRange(row, LC['切替後商品ID']   + 1).setValue(p.id);
             sheet.getRange(row, LC['切替後商品名']   + 1).setValue(p.name);
             sheet.getRange(row, LC['切替後商品種別'] + 1).setValue(p.kind);
             sheet.getRange(row, LC['切替後商品通称'] + 1).setValue(p.nickname);
+            changes.push({ field: 'newProductID', oldValue: oldId, newValue: p.id });
             return;
           }
           const colName = fieldMap[key];
@@ -629,13 +667,16 @@ function api_updateStopRecordFields(payload) {
             value = isNaN(n) ? 0 : n;   // 「—」など非数値は 0 として保存
           }
           if (value == null) value = '';
+          const oldValue = oldRow[LC[colName]];
           sheet.getRange(row, LC[colName] + 1).setValue(value);
+          changes.push({ field: key, oldValue: oldValue, newValue: value });
         });
         // マスタへの自動追加
         if (fields.equipment) _bumpMasterEntry(CONFIG.SHEET_EQUIPMENT, fields.equipment);
         if (fields.reason)    _bumpMasterEntry(CONFIG.SHEET_REASON, fields.reason);
         if (fields.action)    _bumpMasterEntry(CONFIG.SHEET_ACTION, fields.action);
         if (fields.charge)    _bumpMasterEntry(CONFIG.SHEET_CHARGE, fields.charge);
+        _recordChanges(cycleID, logID, 'stop', changes);
         return { success: true };
       }
     }
@@ -673,6 +714,71 @@ function _yearFromCycleID(cycleID) {
   if (base.length < 5) return null;
   const y = parseInt(base.substring(1, 5), 10);
   return isNaN(y) ? null : y;
+}
+
+// =====================================================
+//  変更履歴（旧値≠新値かつ旧値が空でないときだけ追記）
+// =====================================================
+function _getOrCreateHistorySheet(year) {
+  const ss = _appSS();
+  const name = CONFIG.SHEET_PREFIX_HISTORY + year;
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.getRange(1, 1, 1, HISTORY_COLS.length).setValues([HISTORY_COLS]);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, HISTORY_COLS.length)
+      .setFontWeight('bold').setBackground('#f1f3f4');
+  }
+  return sheet;
+}
+
+function _normalizeHistoryValue(v) {
+  if (v == null) return '';
+  if (v instanceof Date) {
+    // ローカル日時で読みやすく
+    const pad = n => String(n).padStart(2, '0');
+    return v.getFullYear() + '-' + pad(v.getMonth() + 1) + '-' + pad(v.getDate())
+         + ' ' + pad(v.getHours()) + ':' + pad(v.getMinutes());
+  }
+  return String(v);
+}
+
+function _isHistoryEmpty(value, field) {
+  if (value == null) return true;
+  if (typeof value === 'string' && value.trim() === '') return true;
+  // 廃棄本数 0 はデフォルト扱いで「未入力」とみなす
+  if (field === 'wastage' && (value === 0 || value === '0')) return true;
+  return false;
+}
+
+/**
+ * changes: [{ field, oldValue, newValue }]
+ * - oldValue が空なら履歴しない（初回入力扱い）
+ * - normalize後の値が同じなら履歴しない
+ */
+function _recordChanges(cycleID, logID, scope, changes) {
+  if (!changes || !changes.length) return;
+  const year = _yearFromCycleID(cycleID);
+  if (!year) return;
+  const ts = new Date();
+  const email = _activeUserEmail();
+  const rows = [];
+  for (const c of changes) {
+    if (_isHistoryEmpty(c.oldValue, c.field)) continue;
+    const oStr = _normalizeHistoryValue(c.oldValue);
+    const nStr = _normalizeHistoryValue(c.newValue);
+    if (oStr === nStr) continue;
+    rows.push([ts, email, cycleID, logID || '', scope, c.field, oStr, nStr]);
+  }
+  if (!rows.length) return;
+  try {
+    const sheet = _getOrCreateHistorySheet(year);
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, HISTORY_COLS.length).setValues(rows);
+  } catch (e) {
+    // 履歴失敗は主処理を止めない
+    Logger.log('履歴記録エラー: ' + e.message);
+  }
 }
 
 /**

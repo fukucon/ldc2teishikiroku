@@ -38,8 +38,9 @@ function setupDatabase() {
 
   // 現在年のシャーディングシート
   const currentYear = new Date().getFullYear();
-  _ensureSheet(appSS, CONFIG.SHEET_PREFIX_HEADER + currentYear, HEADER_COLS);
-  _ensureSheet(appSS, CONFIG.SHEET_PREFIX_LOG    + currentYear, LOG_COLS);
+  _ensureSheet(appSS, CONFIG.SHEET_PREFIX_HEADER  + currentYear, HEADER_COLS);
+  _ensureSheet(appSS, CONFIG.SHEET_PREFIX_LOG     + currentYear, LOG_COLS);
+  _ensureSheet(appSS, CONFIG.SHEET_PREFIX_HISTORY + currentYear, HISTORY_COLS);
 
   // 共通マスタに 部署マスタ が無ければ警告だけ出す（こちらでは作らない）
   const masterSS = SpreadsheetApp.openById(CONFIG.MASTER_SS_ID);
@@ -116,6 +117,7 @@ function migrateSchema() {
     let expected = null;
     if (name.indexOf(CONFIG.SHEET_PREFIX_HEADER) === 0) expected = HEADER_COLS;
     else if (name.indexOf(CONFIG.SHEET_PREFIX_LOG) === 0) expected = LOG_COLS;
+    else if (name.indexOf(CONFIG.SHEET_PREFIX_HISTORY) === 0) expected = HISTORY_COLS;
     else return;
 
     const lastCol = sheet.getLastColumn();
