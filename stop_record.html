@@ -551,6 +551,9 @@
     border: 1px solid var(--border); border-radius: 8px;
     padding: 6px 8px;
   }
+  /* 縞模様（白 / 水色を交互）— unfinished が優先 */
+  .record-item:nth-child(odd)  { background: #ffffff; }
+  .record-item:nth-child(even) { background: #e0f2fe; }  /* 薄い水色 */
   .record-item.unfinished { background: #fffbeb; border-color: #fde68a; }
 
   .record-header {
@@ -630,7 +633,31 @@
   .field-input-wrap {
     display: flex; align-items: center; gap: 6px;
     width: 100%;
+    position: relative;       /* 未入力マークの基準 */
   }
+  /* 未入力フォーム: ピンク背景 + 右上に赤い ! バッジ */
+  .field-input-wrap.wrap-empty > input.record-field,
+  .field-input-wrap.wrap-empty > select.record-field {
+    background: #fee2e2;
+    border-color: #fca5a5;
+  }
+  .field-empty-mark {
+    display: none;
+    position: absolute;
+    top: -7px;
+    right: 12px;             /* rec-ind (10px + gap) より少し内側 */
+    width: 16px; height: 16px;
+    background: #dc2626;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 11px; font-weight: 700;
+    align-items: center; justify-content: center;
+    line-height: 1;
+    pointer-events: none;
+    z-index: 5;
+    box-shadow: 0 0 0 2px #fff;
+  }
+  .field-input-wrap.wrap-empty .field-empty-mark { display: flex; }
   .record-fields-grid .field-input-wrap > input,
   .record-fields-grid .field-input-wrap > select,
   .record-fields-grid .field-input-wrap > .radio-group {
@@ -1158,7 +1185,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // +停止 バーの月日時分を 30秒ごとに現在時刻に追従（マニュアル編集中はスキップ）
   setInterval(tickStopTimeNow, 30 * 1000);
 
-  // 入力中はインジケータをグレーに戻す（青→グレー→保存時に黄→青）
+  // 入力中はインジケータをグレーに戻す（青→グレー→保存時に黄→青）+ 未入力ハイライト切替
   document.addEventListener('input', (e) => {
     const t = e.target;
     if (!t.classList || !t.classList.contains('record-field')) return;
@@ -1167,6 +1194,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!lid || !field) return;
     const ind = findInd(lid, field);
     if (ind) ind.className = 'rec-ind';
+    const wrap = t.closest('.field-input-wrap');
+    if (wrap) wrap.classList.toggle('wrap-empty', !String(t.value || '').trim());
   });
 
   // タブレット: 本当に「外」を タップした時のみ blur（誤発火防止のため、
@@ -1855,6 +1884,9 @@ function renderRecordList() {
   const records = STATE.stopRecords.slice().reverse();
   const monthOpts = range(1, 12).map(n => `<option value="${n}">${n}</option>`).join('');
   const dayOpts   = range(1, 31).map(n => `<option value="${n}">${n}</option>`).join('');
+  // 未入力判定: 空文字 / null / undefined / 空白のみ → wrap-empty
+  const emptyCls = (v) => (v == null || (typeof v === 'string' && v.trim() === '')) ? ' wrap-empty' : '';
+  const MARK = '<span class="field-empty-mark" aria-label="未入力">!</span>';
   list.innerHTML = records.map((r) => {
     const stop = new Date(r.stopAt);
     const stopStr = hhmmFromDate(stop);
@@ -1922,71 +1954,77 @@ function renderRecordList() {
         <div class="record-fields-grid record-row-1">
           <div>
             <div class="field-label">停止設備</div>
-            <div class="field-input-wrap">
+            <div class="field-input-wrap${emptyCls(r.equipment)}">
               <input type="text" class="record-field" data-ac="equipment"
                 data-log-id="${lid}" data-field="equipment"
                 placeholder="選択or入力"
                 value="${escapeAttr(r.equipment || '')}"
                 onblur="saveRecordField('${lid}', 'equipment', this.value)">
               <span class="rec-ind" data-ind="${lid}-equipment"></span>
+              ${MARK}
             </div>
           </div>
           <div>
             <div class="field-label">停止理由</div>
-            <div class="field-input-wrap">
+            <div class="field-input-wrap${emptyCls(r.reason)}">
               <input type="text" class="record-field" data-ac="reason"
                 data-log-id="${lid}" data-field="reason"
                 placeholder="選択or入力"
                 value="${escapeAttr(r.reason || '')}"
                 onblur="saveRecordField('${lid}', 'reason', this.value)">
               <span class="rec-ind" data-ind="${lid}-reason"></span>
+              ${MARK}
             </div>
           </div>
           <div>
             <div class="field-label">対応内容</div>
-            <div class="field-input-wrap">
+            <div class="field-input-wrap${emptyCls(r.action)}">
               <input type="text" class="record-field" data-ac="action"
                 data-log-id="${lid}" data-field="action"
                 placeholder="選択or入力"
                 value="${escapeAttr(r.action || '')}"
                 onblur="saveRecordField('${lid}', 'action', this.value)">
               <span class="rec-ind" data-ind="${lid}-action"></span>
+              ${MARK}
             </div>
           </div>
           <div>
             <div class="field-label">担当</div>
-            <div class="field-input-wrap">
+            <div class="field-input-wrap${emptyCls(r.charge)}">
               <input type="text" class="record-field" data-ac="charge"
                 data-log-id="${lid}" data-field="charge"
                 placeholder="選択or入力"
                 value="${escapeAttr(r.charge || '')}"
                 onblur="saveRecordField('${lid}', 'charge', this.value)">
               <span class="rec-ind" data-ind="${lid}-charge"></span>
+              ${MARK}
             </div>
           </div>
         </div>
         <div class="record-fields-grid record-row-2">
           <div>
             <div class="field-label">${is500ml ? 'フィラー温度' : 'UF温度'}</div>
-            <div class="field-input-wrap">
+            <div class="field-input-wrap${emptyCls(r.ufTemp)}">
               <input type="number" class="record-field" step="0.1"
                 data-ac="${is500ml ? 'filler-temp-500' : 'uf-temp'}"
                 data-log-id="${lid}" data-field="ufTemp"
                 value="${r.ufTemp || ''}"
                 onblur="saveRecordField('${lid}', 'ufTemp', this.value)">
               <span class="rec-ind" data-ind="${lid}-ufTemp"></span>
+              ${MARK}
             </div>
           </div>
           ${is500ml ? '' : `
           <div>
             <div class="field-label">TEA温度</div>
-            <div class="field-input-wrap">
+            <div class="field-input-wrap${emptyCls(r.teaTemp)}">
               <input type="number" class="record-field" step="0.1"
                 data-ac="tea-temp"
                 data-log-id="${lid}" data-field="teaTemp"
                 value="${r.teaTemp || ''}"
                 onblur="saveRecordField('${lid}', 'teaTemp', this.value)">
               <span class="rec-ind" data-ind="${lid}-teaTemp"></span>
+              ${MARK}
             </div>
           </div>`}
           <div>
@@ -2001,13 +2039,14 @@ function renderRecordList() {
           </div>
           <div>
             <div class="field-label">廃棄本数</div>
-            <div class="field-input-wrap">
+            <div class="field-input-wrap${emptyCls(String(r.wastage || ''))}">
               <input type="number" class="record-field" min="0" placeholder="0"
                 data-ac="wastage"
                 data-log-id="${lid}" data-field="wastage"
                 value="${r.wastage || ''}"
                 onblur="saveRecordField('${lid}', 'wastage', this.value)">
               <span class="rec-ind" data-ind="${lid}-wastage"></span>
+              ${MARK}
             </div>
           </div>
           <button class="record-delete-btn" onclick="confirmDeleteRecord('${lid}')">削除</button>
