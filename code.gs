@@ -1308,13 +1308,14 @@ function _fillPrintPage(sh, cycle, pageRows, pageNo, isFirstPage) {
   // 特記事項（1ページ目のみ）
   if (isFirstPage) sh.getRange('A32').setValue(cycle.notes || '');
 
-  // ライン別: 500ml は UF 列ヘッダーを「フィラー温度」に、TEA 列 (I) と ℃ 列 (J) を白文字で隠す
-  //          2L は明示的に黒に戻す（再印刷で残らないように）
+  // ライン別: 500ml は UF 列ヘッダーを「フィラー温度」に、
+  //          TEA 列 (I) + ℃ 列 (J) をヘッダー含めて白文字 + J 列の右罫線を除去
+  // 注: 印刷はテンプレを毎回コピーして使うので 2L は何も変更不要
   if (cycle.line === '500ml') {
-    sh.getRange('G7').setValue('フィラー温度');
-    sh.getRange('I7:J30').setFontColor('#ffffff');
-  } else {
-    sh.getRange('I7:J30').setFontColor('#000000');
+    sh.getRange('G6').setValue('フィラー温度');                              // UF ヘッダー差し替え
+    sh.getRange('G7').setValue('');                                            // 前回の誤上書きを取り消し
+    sh.getRange('I6:J30').setFontColor('#ffffff');                            // TEA データ + ℃ + ヘッダーを白文字
+    sh.getRange('J6:J30').setBorder(null, null, null, false, null, null);     // J 列の右罫線を除去
   }
 }
 
