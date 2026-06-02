@@ -1307,6 +1307,15 @@ function _fillPrintPage(sh, cycle, pageRows, pageNo, isFirstPage) {
 
   // 特記事項（1ページ目のみ）
   if (isFirstPage) sh.getRange('A32').setValue(cycle.notes || '');
+
+  // ライン別: 500ml は UF 列ヘッダーを「フィラー温度」に、TEA 列 (I) と ℃ 列 (J) を白文字で隠す
+  //          2L は明示的に黒に戻す（再印刷で残らないように）
+  if (cycle.line === '500ml') {
+    sh.getRange('G7').setValue('フィラー温度');
+    sh.getRange('I7:J30').setFontColor('#ffffff');
+  } else {
+    sh.getRange('I7:J30').setFontColor('#000000');
+  }
 }
 
 /**
