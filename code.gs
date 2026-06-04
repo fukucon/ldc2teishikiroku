@@ -96,7 +96,7 @@ const LOG_COLS = [
   '担当',             // 8
   'CR入室',           // 9  有 / 無
   '廃棄本数',         // 10
-  'UF温度',           // 11
+  'MF温度',           // 11  (旧名: UF温度 — DB列ヘッダーも MF温度 に手動リネームすること)
   'TEA温度',          // 12
   '記録部署',         // 13
   '記録日時',         // 14
@@ -632,7 +632,7 @@ function api_updateStopRecordFields(payload) {
     charge:       '担当',
     crEntry:      'CR入室',
     wastage:      '廃棄本数',
-    ufTemp:       'UF温度',
+    ufTemp:       'MF温度',
     teaTemp:      'TEA温度',
     newProductID: '切替後商品ID'
   };
@@ -1309,7 +1309,7 @@ function _formatStopTimeTag(isoStr) {
 function _validateCycleForConfirm(cycle, stopRecords) {
   const errs = [];
   const is500ml = cycle.line === '500ml';
-  const tempLabel = is500ml ? 'フィラー温度' : 'UF温度';
+  const tempLabel = is500ml ? 'フィラー温度' : 'MF温度';
   if (!cycle.productID)         errs.push('商品が未選択です');
   if (!cycle.productionStartAt) errs.push('製造開始時刻が未入力です');
   if (!cycle.productionEndAt)   errs.push('製造終了時刻が未入力です');
@@ -1552,11 +1552,11 @@ function _fillPrintPage(sh, cycle, pageRows, pageNo, isFirstPage) {
   // 特記事項（1ページ目のみ）
   if (isFirstPage) sh.getRange('A32').setValue(cycle.notes || '');
 
-  // ライン別: 500ml は UF 列ヘッダーを「フィラー温度」に、
+  // ライン別: 500ml は MF 列ヘッダーを「フィラー温度」に、
   //          TEA 列 (I) + ℃ 列 (J) をヘッダー含めて白文字 + J 列の右罫線を除去
   // 注: 印刷はテンプレを毎回コピーして使うので 2L は何も変更不要
   if (cycle.line === '500ml') {
-    sh.getRange('G6').setValue('フィラー温度');                              // UF ヘッダー差し替え
+    sh.getRange('G6').setValue('フィラー温度');                              // MF ヘッダー差し替え
     sh.getRange('G7').setValue('');                                            // 前回の誤上書きを取り消し
     sh.getRange('I6:J30').setFontColor('#ffffff');                            // TEA データ + ℃ + ヘッダーを白文字
     // TEA 列ブロック (I/J) の右側と I-J 内部の縦線を除去
@@ -1712,7 +1712,7 @@ function api_getAnalysis(payload) {
         charge:    String(r[LC['担当']] || ''),
         crEntry:   String(r[LC['CR入室']] || ''),
         wastage:   Number(r[LC['廃棄本数']]) || 0,
-        ufTemp:    String(r[LC['UF温度']] || ''),
+        ufTemp:    String(r[LC['MF温度']] || ''),
         teaTemp:   String(r[LC['TEA温度']] || ''),
         newProductNickname: String(r[LC['切替後商品通称']] || '')
       });

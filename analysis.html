@@ -242,7 +242,7 @@
             <th>ストップ</th>
             <th>スタート</th>
             <th>分</th>
-            <th>UF</th>
+            <th>MF</th>
             <th>TEA</th>
             <th>停止設備</th>
             <th>停止理由</th>
@@ -431,7 +431,7 @@ function exportToCsv() {
   const loaded = STATE.loaded;
   if (!loaded || !loaded.records || !loaded.records.length) return;
 
-  const headers = ['サイクルID', '月日', '商品', 'ストップ', 'スタート', '分', 'UF温度', 'TEA温度',
+  const headers = ['サイクルID', '月日', '商品', 'ストップ', 'スタート', '分', 'MF温度', 'TEA温度',
                    '停止設備', '停止理由', '対応内容', 'CR入室', '廃棄本数', '担当'];
   const rows = loaded.records.map(r => {
     const sd = r.stopAt ? new Date(r.stopAt) : null;

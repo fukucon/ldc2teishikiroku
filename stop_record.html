@@ -738,13 +738,13 @@
     text-align: center; padding: 24px; color: var(--muted); font-size: 13px;
   }
 
-  /* UF温度 / TEA温度 入力は固定幅で左に詰める */
+  /* MF温度 / TEA温度 入力は固定幅で左に詰める */
   .record-fields-grid input[data-field="ufTemp"],
   .record-fields-grid input[data-field="teaTemp"] {
     width: 70px; flex: 0 0 70px;
   }
 
-  /* Row 2: 4-col gridでなく flex（UF/TEAは固定幅、CR/廃棄は1fr相当、削除ボタンは右端） */
+  /* Row 2: 4-col gridでなく flex（MF/TEAは固定幅、CR/廃棄は1fr相当、削除ボタンは右端） */
   .record-row-2 {
     display: flex !important;
     align-items: flex-end;
@@ -1903,7 +1903,7 @@ function buildRecordsTable() {
     return '<div style="padding:24px; text-align:center; color:var(--muted);">停止記録はまだありません</div>';
   }
   const is500ml = STATE.cycle && STATE.cycle.line === '500ml';
-  const tempLabel = is500ml ? 'フィラー温度' : 'UF温度';
+  const tempLabel = is500ml ? 'フィラー温度' : 'MF温度';
   const headers = [
     'No.', '日付', 'ストップ', 'スタート', '分',
     '停止設備', '停止理由', '対応内容', '担当',
@@ -2188,7 +2188,7 @@ function renderRecordList() {
         </div>
         <div class="record-fields-grid record-row-2">
           <div>
-            <div class="field-label">${is500ml ? 'フィラー温度' : 'UF温度'}</div>
+            <div class="field-label">${is500ml ? 'フィラー温度' : 'MF温度'}</div>
             <div class="field-input-wrap${emptyCls(r.ufTemp)}">
               <input type="number" class="record-field" step="0.1"
                 data-ac="${is500ml ? 'filler-temp-500' : 'uf-temp'}"
