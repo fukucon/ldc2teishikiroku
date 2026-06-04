@@ -237,6 +237,7 @@
       <table class="records-table">
         <thead>
           <tr>
+            <th>ID</th>
             <th>月日</th>
             <th>商品</th>
             <th>ストップ</th>
@@ -389,13 +390,14 @@ function renderTable(res) {
   const records = res.records || [];
   document.getElementById('records-count').textContent = `${records.length}件 / 合計 ${sum(records, 'minutes')}分`;
   if (!records.length) {
-    tbody.innerHTML = '<tr><td colspan="13" style="text-align: center; color: var(--muted); padding: 20px;">該当データがありません</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14" style="text-align: center; color: var(--muted); padding: 20px;">該当データがありません</td></tr>';
     return;
   }
   tbody.innerHTML = records.map(r => {
     const sd = r.stopAt ? new Date(r.stopAt) : null;
     const ed = r.startAt ? new Date(r.startAt) : null;
     return `<tr>
+      <td>${escapeHtml(r.cycleID || '')}</td>
       <td>${sd ? (sd.getMonth()+1) + '/' + sd.getDate() : '—'}</td>
       <td class="col-product">${escapeHtml(r.productNickname || '')}</td>
       <td>${sd ? pad(sd.getHours()) + ':' + pad(sd.getMinutes()) : '—'}</td>
