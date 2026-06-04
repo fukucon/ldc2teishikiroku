@@ -31,10 +31,11 @@ const CONFIG = {
   MASTER_PERMISSIONS: '管理者名簿',     // A:氏名 / B:メール / C:権限レベル(一般/リーダー/全権)
 
   // ラインマスタ（ハードコード）
-  // key: 内部識別子、prefix: サイクルIDの接頭辞
+  //  prefix: 新フォーマット ID のラインプレフィックス（2L-5C1 / 500-5C1）
+  //  oldPrefix: 旧フォーマット ID の頭1文字（A20260519 / B20260519）
   LINES: {
-    '2L':    { prefix: 'A', display: '2L',    name: '2L 充填・包装B' },
-    '500ml': { prefix: 'B', display: '500ml', name: '500ml 充填・包装B' }
+    '2L':    { prefix: '2L',  oldPrefix: 'A', display: '2L',    name: '2L 充填・包装B' },
+    '500ml': { prefix: '500', oldPrefix: 'B', display: '500ml', name: '500ml 充填・包装B' }
   },
 
   // バリデーション
@@ -710,10 +711,48 @@ function _getYearlySheet(name) {
  */
 function _yearFromCycleID(cycleID) {
   if (!cycleID) return null;
-  const base = String(cycleID).split('-')[0];
-  if (base.length < 5) return null;
-  const y = parseInt(base.substring(1, 5), 10);
-  return isNaN(y) ? null : y;
+  const id = String(cycleID);
+  // 旧フォーマット: 'A20260601' / 'B20260601-v2' → 先頭英字＋4桁年
+  const m = id.match(/^[A-Za-z](\d{4})/);
+  if (m) {
+    const y = parseInt(m[1], 10);
+    if (!isNaN(y)) return y;
+  }
+  // 新フォーマット: '2L-5C1' / '500-5C1' → 年が ID に無いので年シートをスキャン
+  return _scanYearForCycle(id);
+}
+
+// 年スキャンは同一実行内でキャッシュ（GAS は実行ごとに揮発するので OK）
+const _CYCLE_YEAR_CACHE = {};
+function _scanYearForCycle(cycleID) {
+  if (_CYCLE_YEAR_CACHE[cycleID]) return _CYCLE_YEAR_CACHE[cycleID];
+  const ss = _appSS();
+  const sheets = ss.getSheets();
+  for (const sh of sheets) {
+    const name = sh.getName();
+    if (name.indexOf(CONFIG.SHEET_PREFIX_HEADER) !== 0) continue;
+    if (sh.getLastRow() < 2) continue;
+    const ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i][0] === cycleID) {
+        const yStr = name.substring(CONFIG.SHEET_PREFIX_HEADER.length);
+        const y = parseInt(yStr, 10);
+        if (!isNaN(y)) _CYCLE_YEAR_CACHE[cycleID] = y;
+        return isNaN(y) ? null : y;
+      }
+    }
+  }
+  return null;
+}
+
+// ライン判定: cycleID が指定ラインに属するか（新旧両フォーマット対応）
+function _cycleLineMatches(cycleID, line) {
+  const id = String(cycleID || '');
+  const conf = CONFIG.LINES[line];
+  if (!conf) return false;
+  if (conf.prefix && id.indexOf(conf.prefix + '-') === 0) return true;       // 新: 2L-... / 500-...
+  if (conf.oldPrefix && id.charAt(0) === conf.oldPrefix) return true;        // 旧: A... / B...
+  return false;
 }
 
 // =====================================================
@@ -782,14 +821,16 @@ function _recordChanges(cycleID, logID, scope, changes) {
 }
 
 /**
- * ログIDから親サイクルIDを抽出
- * A20260519-3 -> A20260519 / A20260519-v2-3 -> A20260519-v2
+ * ログIDから親サイクルIDを抽出（末尾の '-<数字>' を剥がす）
+ *  A20260519-3       -> A20260519
+ *  A20260519-v2-3    -> A20260519-v2
+ *  2L-5C1-12         -> 2L-5C1
+ *  500-5C1-1         -> 500-5C1
  */
 function _cycleFromLogID(logID) {
   if (!logID) return null;
-  const parts = String(logID).split('-');
-  if (parts.length < 2) return null;
-  return parts.slice(0, -1).join('-');
+  const m = String(logID).match(/^(.+)-\d+$/);
+  return m ? m[1] : null;
 }
 
 /**
@@ -951,8 +992,9 @@ function _invalidateMasterCache() {
  */
 function _ensureYearlySheets(year) {
   const ss = _appSS();
-  const headerName = CONFIG.SHEET_PREFIX_HEADER + year;
-  const logName    = CONFIG.SHEET_PREFIX_LOG    + year;
+  const headerName  = CONFIG.SHEET_PREFIX_HEADER  + year;
+  const logName     = CONFIG.SHEET_PREFIX_LOG     + year;
+  const historyName = CONFIG.SHEET_PREFIX_HISTORY + year;
 
   if (!ss.getSheetByName(headerName)) {
     const s = ss.insertSheet(headerName);
@@ -966,11 +1008,50 @@ function _ensureYearlySheets(year) {
     s.setFrozenRows(1);
     s.getRange(1, 1, 1, LOG_COLS.length).setFontWeight('bold').setBackground('#f1f3f4');
   }
+  if (!ss.getSheetByName(historyName)) {
+    const s = ss.insertSheet(historyName);
+    s.getRange(1, 1, 1, HISTORY_COLS.length).setValues([HISTORY_COLS]);
+    s.setFrozenRows(1);
+    s.getRange(1, 1, 1, HISTORY_COLS.length).setFontWeight('bold').setBackground('#f1f3f4');
+  }
 }
 
+/**
+ * 新フォーマットのサイクルID採番
+ *  ルール: <prefix>-<月>C<連番>
+ *    例: 2L-5C1 = 2L ライン 5月 1番目
+ *    連番は同一年・同一ライン・同一月内で 1 から採番、月またぎでリセット
+ *  productionDate: 'YYYY-MM-DD'
+ */
 function _generateCycleID(line, productionDate) {
   const prefix = CONFIG.LINES[line].prefix;
-  return prefix + productionDate.replace(/-/g, '');
+  const parts = String(productionDate).split('-');
+  const year  = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const seq = _nextCycleSeq(year, line, month);
+  return prefix + '-' + month + 'C' + seq;
+}
+
+/**
+ * 指定年・ライン・月の新フォーマット ID 群を見て次の連番を返す
+ * (旧フォーマット A2026... 等は無視。新フォーマット ID 同士でのみ最大+1)
+ */
+function _nextCycleSeq(year, line, month) {
+  const sheet = _getYearlySheet(CONFIG.SHEET_PREFIX_HEADER + year);
+  if (!sheet || sheet.getLastRow() < 2) return 1;
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  const headPrefix = CONFIG.LINES[line].prefix + '-' + month + 'C';
+  let max = 0;
+  for (const r of data) {
+    const id = String(r[0] || '');
+    if (id.indexOf(headPrefix) !== 0) continue;
+    const tail = id.substring(headPrefix.length);
+    const m = tail.match(/^(\d+)/);
+    if (!m) continue;
+    const v = parseInt(m[1], 10);
+    if (v > max) max = v;
+  }
+  return max + 1;
 }
 
 /**
@@ -1607,10 +1688,9 @@ function api_getAnalysis(payload) {
   let prevYear = year, prevMonth = month - 1;
   if (prevMonth < 1) { prevMonth = 12; prevYear = year - 1; }
 
-  const linePrefix = CONFIG.LINES[line].prefix;
   const years = (year === prevYear) ? [year] : [year, prevYear];
 
-  // 該当する全ログを読み込み（cycleID 接頭辞でライン判定）
+  // 該当する全ログを読み込み（cycleID 接頭辞でライン判定: 旧A/B、新 2L-/500- 両対応）
   const logsRaw = [];
   years.forEach(y => {
     const sheet = _getYearlySheet(CONFIG.SHEET_PREFIX_LOG + y);
@@ -1618,7 +1698,7 @@ function api_getAnalysis(payload) {
     const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, LOG_COLS.length).getValues();
     data.forEach(r => {
       const cycleID = String(r[LC['親サイクルID']]);
-      if (cycleID.charAt(0) !== linePrefix) return;
+      if (!_cycleLineMatches(cycleID, line)) return;
       const stopAt = r[LC['ストップ日時']];
       if (!(stopAt instanceof Date)) return;
       logsRaw.push({
