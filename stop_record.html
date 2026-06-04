@@ -103,6 +103,67 @@
     display: flex; justify-content: center; gap: 8px;
   }
 
+  /* ── 一覧表 (テーブル) ビュー モーダル ── */
+  .table-modal .modal-dialog {
+    max-width: 96vw; width: 96vw;
+    max-height: 92vh;
+    padding: 14px 14px 12px;
+    display: flex; flex-direction: column;
+  }
+  .table-modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 16px; font-weight: 800; color: var(--text);
+  }
+  .table-modal-close {
+    background: transparent; border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 10px;
+    font-size: 13px; cursor: pointer;
+  }
+  .table-scroll {
+    overflow: auto;
+    border: 1px solid var(--border); border-radius: 8px;
+    flex: 1;
+  }
+  .records-table {
+    border-collapse: collapse;
+    font-size: 12px; width: max-content; min-width: 100%;
+    background: var(--surface);
+  }
+  .records-table th, .records-table td {
+    border: 1px solid #d1d5db;
+    padding: 4px 8px;
+    white-space: nowrap;
+    text-align: left;
+    vertical-align: middle;
+  }
+  .records-table th {
+    background: #f3f4f6;
+    font-weight: 700; font-size: 11px;
+    position: sticky; top: 0; z-index: 2;
+  }
+  .records-table tr:nth-child(even) td { background: #f9fafb; }
+  .records-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .records-table td.dim { color: var(--muted); }
+  .records-table td.center { text-align: center; }
+  .records-table .row-unfinished td { background: #fffbeb; }
+
+  /* ── フローティングボタン (左下の一覧表ビュー起動) ── */
+  .fab-table {
+    position: fixed; left: 14px; bottom: 14px; z-index: 90;
+    width: 50px; height: 50px;
+    border-radius: 12px;
+    border: 1px solid var(--accent);
+    background: rgba(255,255,255,0.95);
+    color: var(--accent);
+    font-size: 22px; font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .fab-table:hover { background: #eff6ff; }
+  .fab-table:active { transform: translateY(1px); }
+
   /* ── 確定ボタン / バッジ ── */
   .confirm-area {
     display: inline-flex; align-items: center; gap: 6px;
@@ -874,6 +935,23 @@
     </div>
   </div>
 </div>
+
+<!-- 一覧表 (Excel風) ビュー モーダル -->
+<div class="modal-overlay table-modal hidden" id="table-modal"
+     onclick="if(event.target.id==='table-modal')closeTableView()">
+  <div class="modal-dialog">
+    <div class="table-modal-head">
+      <span id="table-modal-title">停止記録 一覧</span>
+      <button class="table-modal-close" onclick="closeTableView()">閉じる</button>
+    </div>
+    <div class="table-scroll" id="table-scroll">
+      <!-- table-builds-here -->
+    </div>
+  </div>
+</div>
+
+<!-- 左下フローティング: 一覧表ビュー -->
+<button class="fab-table" onclick="openTableView()" title="一覧表で表示" aria-label="一覧表で表示">▦</button>
 
 <script>
 const APP_URL = '<?= appUrl ?>';
@@ -1798,6 +1876,96 @@ function openNotesModal() {
   setSaveIndicator('notes-save', '');
   document.getElementById('notes-modal').classList.remove('hidden');
   setTimeout(() => ta.focus(), 50);
+}
+
+// =====================================================
+//  一覧表 (Excel風) ビュー
+// =====================================================
+function openTableView() {
+  document.getElementById('table-scroll').innerHTML = buildRecordsTable();
+  const c = STATE.cycle;
+  if (c) {
+    const md = c.productionDate.split('-');
+    document.getElementById('table-modal-title').textContent =
+      '停止記録 一覧 (' + c.line + ' / ' + parseInt(md[1],10) + '/' + parseInt(md[2],10) + ')';
+  }
+  document.getElementById('table-modal').classList.remove('hidden');
+}
+function closeTableView() {
+  document.getElementById('table-modal').classList.add('hidden');
+}
+
+function buildRecordsTable() {
+  const records = (STATE.stopRecords || []).slice().sort((a, b) =>
+    a.stopAt < b.stopAt ? -1 : a.stopAt > b.stopAt ? 1 : 0
+  );
+  if (records.length === 0) {
+    return '<div style="padding:24px; text-align:center; color:var(--muted);">停止記録はまだありません</div>';
+  }
+  const is500ml = STATE.cycle && STATE.cycle.line === '500ml';
+  const tempLabel = is500ml ? 'フィラー温度' : 'UF温度';
+  const headers = [
+    'No.', '日付', 'ストップ', 'スタート', '分',
+    '停止設備', '停止理由', '対応内容', '担当',
+    'CR入室', '廃棄本数', tempLabel
+  ];
+  if (!is500ml) headers.push('TEA温度');
+  headers.push('商品');
+
+  const head = '<thead><tr>' + headers.map(h => '<th>' + escapeHtml(h) + '</th>').join('') + '</tr></thead>';
+
+  const dash = '—';
+  const body = '<tbody>' + records.map((r, i) => {
+    const stop = new Date(r.stopAt);
+    const stopMD = (stop.getMonth()+1) + '/' + stop.getDate();
+    const stopHM = String(stop.getHours()).padStart(2,'0') + ':' + String(stop.getMinutes()).padStart(2,'0');
+    const startHM = r.startAt
+      ? (function(){const d=new Date(r.startAt);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');})()
+      : dash;
+    const minStr = r.startAt ? String(r.minutes || 0) : dash;
+    // 商品: 商品切替なら after を表示、そうでなければ stopAt 時点の商品
+    const eqStr = String(r.equipment || '');
+    const isSwitch = eqStr.indexOf('品種切替') !== -1 || eqStr.indexOf('商品切替') !== -1;
+    let productCell;
+    if (isSwitch) {
+      const before = productName(computeProductAt(r.stopAt, false));
+      const after  = productName(r.newProductID || '');
+      productCell = (before || dash) + ' → ' + (after || dash);
+    } else {
+      productCell = productName(computeProductAt(r.stopAt, true)) || dash;
+    }
+    const cells = [
+      { v: String(i + 1), c: 'num center' },
+      { v: stopMD, c: 'center' },
+      { v: stopHM, c: 'center' },
+      { v: startHM, c: 'center' + (r.startAt ? '' : ' dim') },
+      { v: minStr, c: 'num' + (r.startAt ? '' : ' dim') },
+      { v: r.equipment || dash, c: r.equipment ? '' : 'dim' },
+      { v: r.reason    || dash, c: r.reason    ? '' : 'dim' },
+      { v: r.action    || dash, c: r.action    ? '' : 'dim' },
+      { v: r.charge    || dash, c: r.charge    ? '' : 'dim' },
+      { v: r.crEntry   || dash, c: 'center'    + (r.crEntry ? '' : ' dim') },
+      { v: (r.wastage === 0 || r.wastage === '0') ? dash
+           : (r.wastage !== '' && r.wastage != null ? String(r.wastage) : dash),
+        c: 'num' + ((r.wastage !== '' && r.wastage != null) ? '' : ' dim') },
+      { v: (r.ufTemp !== '' && r.ufTemp != null) ? String(r.ufTemp) : dash,
+        c: 'num' + ((r.ufTemp !== '' && r.ufTemp != null) ? '' : ' dim') }
+    ];
+    if (!is500ml) {
+      cells.push({
+        v: (r.teaTemp !== '' && r.teaTemp != null) ? String(r.teaTemp) : dash,
+        c: 'num' + ((r.teaTemp !== '' && r.teaTemp != null) ? '' : ' dim')
+      });
+    }
+    cells.push({ v: productCell, c: '' });
+
+    const rowCls = r.startAt ? '' : ' class="row-unfinished"';
+    return '<tr' + rowCls + '>' +
+      cells.map(x => '<td class="' + (x.c || '') + '">' + escapeHtml(x.v) + '</td>').join('') +
+      '</tr>';
+  }).join('') + '</tbody>';
+
+  return '<table class="records-table">' + head + body + '</table>';
 }
 function closeNotesModal() {
   document.getElementById('notes-modal').classList.add('hidden');
