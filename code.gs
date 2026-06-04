@@ -1341,8 +1341,62 @@ function api_printCycle(payload) {
   } catch (e) {
     return { success: false, error: e.message };
   } finally {
-    try { DriveApp.getFileById(tempId).setTrashed(true); } catch (e) {}
+    // setTrashed だとゴミ箱に残ってしまうため、Drive API で完全削除する
+    _deletePrintTempFile(tempId);
   }
+}
+
+/**
+ * 印刷用テンプレ一時スプシを完全削除する
+ *   - 第一手: Drive API v3 DELETE (ゴミ箱を経由せず即削除)
+ *   - 失敗時のフォールバック: DriveApp.setTrashed
+ */
+function _deletePrintTempFile(fileId) {
+  if (!fileId) return;
+  try {
+    const r = UrlFetchApp.fetch(
+      'https://www.googleapis.com/drive/v3/files/' + fileId,
+      {
+        method: 'delete',
+        headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+        muteHttpExceptions: true
+      }
+    );
+    // 204 No Content が成功
+    if (r.getResponseCode() < 300) return;
+  } catch (e) { /* fallthrough */ }
+  try { DriveApp.getFileById(fileId).setTrashed(true); } catch (_) {}
+}
+
+/**
+ * 既に溜まっている印刷テンプレ (名前が「印刷_」で始まる) を一掃する。
+ * 手動で1回実行するためのユーティリティ。
+ * 直近 minAgeMinutes 分以内に作成された file は触らない (進行中の印刷を保護)
+ */
+function cleanupPrintTempFiles(minAgeMinutes) {
+  const cutoffMs = Date.now() - (Math.max(1, minAgeMinutes || 10) * 60 * 1000);
+  let scanned = 0, deleted = 0, failed = 0;
+  const it = DriveApp.searchFiles("title contains '印刷_' and trashed = false");
+  while (it.hasNext()) {
+    const f = it.next();
+    scanned++;
+    const name = f.getName();
+    // 「印刷_<cycleID>_<epochms>」形式のみ対象
+    if (!/^印刷_.+_\d{10,}$/.test(name)) continue;
+    if (f.getDateCreated().getTime() > cutoffMs) continue;
+    const id = f.getId();
+    const before = deleted;
+    _deletePrintTempFile(id);
+    // 削除確認 (検索インデックス遅延を避けて直接確認)
+    try {
+      DriveApp.getFileById(id);  // まだ取れたら失敗
+      failed++;
+    } catch (_) {
+      deleted++;
+    }
+  }
+  Logger.log('cleanupPrintTempFiles: scanned=' + scanned + ' deleted=' + deleted + ' failed=' + failed);
+  return { scanned, deleted, failed };
 }
 
 function _printHM(iso) {
