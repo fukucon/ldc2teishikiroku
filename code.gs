@@ -1586,6 +1586,10 @@ function _fillPrintPage(sh, cycle, pageRows, pageNo, isFirstPage) {
   // 特記事項（1ページ目のみ）
   if (isFirstPage) sh.getRange('A32').setValue(cycle.notes || '');
 
+  // 帳票バージョンスタンプ (Q35:S35 結合セル)
+  const verStamp = (cycle.line === '500ml') ? 'ver.4_ 20260402(12)' : 'ver.2_ 20240715(14)';
+  sh.getRange('Q35').setValue(verStamp);
+
   // ライン別: 500ml は MF 列ヘッダーを「フィラー温度」に、
   //          TEA 列 (I) + ℃ 列 (J) をヘッダー含めて白文字 + J 列の右罫線を除去
   // 注: 印刷はテンプレを毎回コピーして使うので 2L は何も変更不要
