@@ -2240,10 +2240,11 @@ function renderRecordList() {
           <div>
             <div class="field-label">停止理由</div>
             <div class="field-input-wrap${emptyCls(r.reason)}">
-              <select class="record-field" data-log-id="${lid}" data-field="reason"
-                onchange="saveRecordField('${lid}', 'reason', this.value)">
-                ${restrictedSelectOptions(STATE.masters.reason, r.reason)}
-              </select>
+              <input type="text" class="record-field" data-ac="reason"
+                data-log-id="${lid}" data-field="reason"
+                placeholder="選択or入力"
+                value="${escapeAttr(r.reason || '')}"
+                onblur="saveRecordField('${lid}', 'reason', this.value)">
               <span class="rec-ind" data-ind="${lid}-reason"></span>
               ${MARK}
             </div>
