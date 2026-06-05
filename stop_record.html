@@ -555,6 +555,26 @@
   .prod-time-line input[type="time"] {
     width: 105px; min-width: 105px;  /* Safari 空欄時の縮みを防ぐ */
   }
+  /* 開始/終了担当者・開始廃棄本数 用の追加入力 */
+  .prod-extra-label {
+    font-size: 11px; color: var(--muted);
+    margin-left: 4px;
+  }
+  .prod-extra-input {
+    font-size: 13px; min-height: 28px;
+    padding: 2px 6px;
+    width: 88px; min-width: 88px;
+    border: 1px solid #d1d5db; border-radius: 5px;
+    background: var(--surface);
+  }
+  .prod-extra-input-num {
+    font-size: 13px; min-height: 28px;
+    padding: 2px 6px;
+    width: 50px; min-width: 50px;
+    border: 1px solid #d1d5db; border-radius: 5px;
+    background: var(--surface);
+    text-align: right;
+  }
 
   .save-indicator {
     width: 10px; height: 10px; border-radius: 50%;
@@ -851,6 +871,14 @@
           <select id="prod-start-minute" onchange="onProdStartChange()"></select>
         </span>
         <span class="save-indicator" id="start-save"></span>
+        <span class="prod-extra-label">担当</span>
+        <input type="text" id="prod-start-charge" data-ac="charge" class="prod-extra-input"
+               placeholder="開始担当者" onblur="saveCycleStartCharge()">
+        <span class="save-indicator" id="start-charge-save"></span>
+        <span class="prod-extra-label">廃棄</span>
+        <input type="text" id="prod-start-wastage" inputmode="numeric" class="prod-extra-input-num"
+               placeholder="0" onblur="saveCycleStartWastage()">
+        <span class="save-indicator" id="start-wastage-save"></span>
       </div>
       <span class="prod-separator">〜</span>
       <div class="prod-group prod-end">
@@ -864,6 +892,10 @@
           <select id="prod-end-minute" onchange="onProdEndChange()"></select>
         </span>
         <span class="save-indicator" id="end-save"></span>
+        <span class="prod-extra-label">担当</span>
+        <input type="text" id="prod-end-charge" data-ac="charge" class="prod-extra-input"
+               placeholder="終了担当者" onblur="saveCycleEndCharge()">
+        <span class="save-indicator" id="end-charge-save"></span>
       </div>
     </div>
     <!-- 停止記録の追加（右、1行） -->
@@ -1205,6 +1237,16 @@ function softMerge(detail) {
       setTimePair('prod-end-hour', 'prod-end-minute', '', true);
     }
   }
+  // 開始担当者・開始廃棄本数・終了担当者 (focus 中はスキップ)
+  const sCh = document.getElementById('prod-start-charge');
+  const sWa = document.getElementById('prod-start-wastage');
+  const eCh = document.getElementById('prod-end-charge');
+  if (sCh && ae !== sCh) sCh.value = detail.cycle.startCharge || '';
+  if (sWa && ae !== sWa) {
+    sWa.value = (detail.cycle.startWastage === 0 || detail.cycle.startWastage === '0') ? '—'
+      : (detail.cycle.startWastage !== '' && detail.cycle.startWastage != null ? String(detail.cycle.startWastage) : '');
+  }
+  if (eCh && ae !== eCh) eCh.value = detail.cycle.endCharge || '';
 
   // 停止記録一覧: 行内フィールド編集中ならスキップ（次回反映）
   STATE.stopRecords = detail.stopRecords || [];
@@ -1592,6 +1634,39 @@ function initProdTimes() {
     document.getElementById('prod-end-day').value = parseInt(md[2], 10);
     setTimePair('prod-end-hour', 'prod-end-minute', '', true);
   }
+
+  // V/W/X: 開始担当者・開始廃棄本数・終了担当者
+  document.getElementById('prod-start-charge').value  = c.startCharge  || '';
+  document.getElementById('prod-start-wastage').value =
+    (c.startWastage === 0 || c.startWastage === '0') ? '—'
+    : (c.startWastage !== '' && c.startWastage != null ? String(c.startWastage) : '');
+  document.getElementById('prod-end-charge').value    = c.endCharge    || '';
+}
+
+// V/W/X 保存ハンドラ
+function saveCycleStartCharge() {
+  _saveCycleField('startCharge', document.getElementById('prod-start-charge').value, 'start-charge-save');
+}
+function saveCycleEndCharge() {
+  _saveCycleField('endCharge', document.getElementById('prod-end-charge').value, 'end-charge-save');
+}
+function saveCycleStartWastage() {
+  // 「—」 / 非数値 は 0 として送信
+  let v = document.getElementById('prod-start-wastage').value.trim();
+  const n = parseInt(v, 10);
+  v = isNaN(n) ? '0' : String(n);
+  _saveCycleField('startWastage', v, 'start-wastage-save');
+}
+function _saveCycleField(field, value, indId) {
+  setSaveIndicator(indId, 'saving', '保存中…');
+  gas('api_updateCycleField', { cycleID: STATE.cycle.cycleID, field: field, value: value }).then(res => {
+    if (res && res.success) {
+      setSaveIndicator(indId, 'saved', '保存しました');
+      STATE.cycle[field] = (field === 'startWastage') ? parseInt(value, 10) || 0 : value;
+    } else {
+      setSaveIndicator(indId, 'error', (res && res.error) || 'エラー');
+    }
+  }).catch(err => setSaveIndicator(indId, 'error', err.message));
 }
 
 function onProdStartChange() {
@@ -2071,6 +2146,16 @@ function renderRecordList() {
     r.wastage === 0 || r.wastage === '0' ? '—'
     : (r.wastage !== '' && r.wastage != null ? String(r.wastage) : '');
   const MARK = '<span class="field-empty-mark" aria-label="未入力">!</span>';
+  // 自由入力不可の select 用候補 (停止設備/停止理由)。 既存値が候補に無くても表示維持
+  const restrictedSelectOptions = (list, current) => {
+    const items = [...(list || [])];
+    if (current && items.indexOf(current) === -1) items.unshift(current);
+    let html = '<option value="">— 選択 —</option>';
+    items.forEach(v => {
+      html += '<option value="' + escapeAttr(v) + '"' + (v === current ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
+    });
+    return html;
+  };
   list.innerHTML = records.map((r) => {
     const stop = new Date(r.stopAt);
     const stopStr = hhmmFromDate(stop);
@@ -2140,11 +2225,10 @@ function renderRecordList() {
           <div>
             <div class="field-label">停止設備</div>
             <div class="field-input-wrap${emptyCls(r.equipment)}">
-              <input type="text" class="record-field" data-ac="equipment"
-                data-log-id="${lid}" data-field="equipment"
-                placeholder="選択or入力"
-                value="${escapeAttr(r.equipment || '')}"
-                onblur="saveRecordField('${lid}', 'equipment', this.value)">
+              <select class="record-field" data-log-id="${lid}" data-field="equipment"
+                onchange="saveRecordField('${lid}', 'equipment', this.value)">
+                ${restrictedSelectOptions(STATE.masters.equipment, r.equipment)}
+              </select>
               <span class="rec-ind" data-ind="${lid}-equipment"></span>
               ${MARK}
             </div>
@@ -2152,11 +2236,10 @@ function renderRecordList() {
           <div>
             <div class="field-label">停止理由</div>
             <div class="field-input-wrap${emptyCls(r.reason)}">
-              <input type="text" class="record-field" data-ac="reason"
-                data-log-id="${lid}" data-field="reason"
-                placeholder="選択or入力"
-                value="${escapeAttr(r.reason || '')}"
-                onblur="saveRecordField('${lid}', 'reason', this.value)">
+              <select class="record-field" data-log-id="${lid}" data-field="reason"
+                onchange="saveRecordField('${lid}', 'reason', this.value)">
+                ${restrictedSelectOptions(STATE.masters.reason, r.reason)}
+              </select>
               <span class="rec-ind" data-ind="${lid}-reason"></span>
               ${MARK}
             </div>

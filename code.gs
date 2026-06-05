@@ -76,7 +76,10 @@ const HEADER_COLS = [
   '商品種別',        // 17 同上 (2L / 500ml)
   '商品通称',        // 18 同上
   '確定日時',        // 19 (NEW) 日報確定操作の日時、空なら未確定
-  '確定者メール'     // 20 (NEW) 確定操作したユーザーのメール
+  '確定者メール',    // 20 (NEW) 確定操作したユーザーのメール
+  '開始担当者',      // 21 (V) 製造開始時の担当者
+  '開始廃棄本数',    // 22 (W) 製造開始時の廃棄本数
+  '終了担当者'       // 23 (X) 製造終了時の担当者
 ];
 
 // 列名→indexのマップ（HC.停止記録件数 のように使う）
@@ -325,7 +328,10 @@ function api_updateCycleField(payload) {
     'productionStartAt': '製造開始日時',
     'productionEndAt':   '製造終了日時',
     'notes':             '特記事項',
-    'productID':         '商品ID'
+    'productID':         '商品ID',
+    'startCharge':       '開始担当者',
+    'startWastage':      '開始廃棄本数',
+    'endCharge':         '終了担当者'
   };
   const colName = fieldMap[field];
   if (!colName) return { success: false, error: '不正なフィールド: ' + field };
@@ -353,8 +359,16 @@ function api_updateCycleField(payload) {
           sheet.getRange(row, HC['商品通称'] + 1).setValue(p.nickname);
           newValue = p.id;
         } else {
-          const storedValue = (value && (field === 'productionStartAt' || field === 'productionEndAt'))
-            ? new Date(value) : value;
+          let storedValue;
+          if (value && (field === 'productionStartAt' || field === 'productionEndAt')) {
+            storedValue = new Date(value);
+          } else if (field === 'startWastage') {
+            // 「—」や非数値は 0 として保存
+            const n = parseInt(value, 10);
+            storedValue = isNaN(n) ? 0 : n;
+          } else {
+            storedValue = value;
+          }
           oldValue = sheet.getRange(row, HC[colName] + 1).getValue();
           sheet.getRange(row, HC[colName] + 1).setValue(storedValue);
           newValue = storedValue;
@@ -865,7 +879,10 @@ function _findCycle(cycleID) {
         productKind: r[17] ? String(r[17]) : '',
         productNickname: r[18] ? String(r[18]) : '',
         confirmedAt: _toIso(r[19]),
-        confirmedBy: r[20] ? String(r[20]) : ''
+        confirmedBy: r[20] ? String(r[20]) : '',
+        startCharge:  r[21] ? String(r[21]) : '',
+        startWastage: (r[22] === '' || r[22] == null) ? '' : Number(r[22]),
+        endCharge:    r[23] ? String(r[23]) : ''
       };
     }
   }
@@ -1134,7 +1151,10 @@ function _getCycles(params) {
       productKind: r[17] ? String(r[17]) : '',
       productNickname: r[18] ? String(r[18]) : '',
       confirmedAt: _toIso(r[19]),
-      confirmedBy: r[20] ? String(r[20]) : ''
+      confirmedBy: r[20] ? String(r[20]) : '',
+      startCharge:  r[21] ? String(r[21]) : '',
+      startWastage: (r[22] === '' || r[22] == null) ? '' : Number(r[22]),
+      endCharge:    r[23] ? String(r[23]) : ''
     })),
     hasMore: hasMore,
     nextBeforeDate: hasMore ? _toDateStr(page[page.length - 1][2]) : null
