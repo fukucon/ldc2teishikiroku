@@ -1525,7 +1525,8 @@ function _fillPrintPage(sh, cycle, pageRows, pageNo, isFirstPage) {
   // 製造開始（行7 E列）: 1ページ目のみ実時刻、以降は ―
   sh.getRange('E7').setValue(isFirstPage && cycle.productionStartAt ? _printHM(cycle.productionStartAt) : DASH);
 
-  // 終了担当者(S3 [S3:S4結合]) は全ページに入れる
+  // 終了担当者(S3:S4 結合セル) は全ページに入れる + 結合範囲で縦中央寄せ
+  sh.getRange('S3:S4').setVerticalAlignment('middle');
   sh.getRange('S3').setValue(cycle.endCharge || DASH);
   // 開始担当者(Q7) / 開始廃棄本数(S7) は1ページ目のみ実値、以降は ―
   if (isFirstPage) {
