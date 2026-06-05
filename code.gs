@@ -1525,17 +1525,17 @@ function _fillPrintPage(sh, cycle, pageRows, pageNo, isFirstPage) {
   // 製造開始（行7 E列）: 1ページ目のみ実時刻、以降は ―
   sh.getRange('E7').setValue(isFirstPage && cycle.productionStartAt ? _printHM(cycle.productionStartAt) : DASH);
 
-  // 1ページ目のみ: 開始担当者(Q7) / 開始廃棄本数(S7) / 終了担当者(S3 [S3:S4結合])
+  // 終了担当者(S3 [S3:S4結合]) は全ページに入れる
+  sh.getRange('S3').setValue(cycle.endCharge || DASH);
+  // 開始担当者(Q7) / 開始廃棄本数(S7) は1ページ目のみ実値、以降は ―
   if (isFirstPage) {
     sh.getRange('Q7').setValue(cycle.startCharge || DASH);
     sh.getRange('S7').setValue(
       (cycle.startWastage !== '' && cycle.startWastage != null) ? cycle.startWastage : DASH
     );
-    sh.getRange('S3').setValue(cycle.endCharge || DASH);
   } else {
     sh.getRange('Q7').setValue(DASH);
     sh.getRange('S7').setValue(DASH);
-    sh.getRange('S3').setValue(DASH);
   }
 
   // データ行 8〜30 を列ごとにまとめて流し込み（℃/分のラベル列 H/J/L は触らない）
