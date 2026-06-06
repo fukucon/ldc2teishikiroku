@@ -1040,7 +1040,7 @@ function gas(method, ...args) {
 // =====================================================
 //  接続状態インジケータ + 自動更新
 // =====================================================
-const POLL_INTERVAL_MS = 15000;
+const POLL_INTERVAL_MS = 30000;   // 30秒。他アプリと GAS 制限を共有しているため抑え気味
 let pollTimer = null;
 
 function setOnlineStatus(online) {
@@ -1062,10 +1062,9 @@ function setOnlineStatus(online) {
 
 function startAutoRefresh() {
   stopAutoRefresh();
-  pollTimer = setInterval(() => {
-    if (document.hidden) return;
-    pollUpdate();
-  }, POLL_INTERVAL_MS);
+  // 非表示なら polling 自体を起動しない (タブ復帰時の visibilitychange で再起動)
+  if (document.hidden) return;
+  pollTimer = setInterval(pollUpdate, POLL_INTERVAL_MS);
 }
 
 function stopAutoRefresh() {
@@ -1307,10 +1306,15 @@ window.addEventListener('DOMContentLoaded', () => {
     document.body.innerHTML = `<div style="padding: 40px;">⚠ 取得失敗: ${err.message}</div>`;
   });
 
-  // 画面が表に戻ったら即時更新 + WakeLock 再取得（1時間内なら）
+  // 表/非表示切替:
+  //   表に戻ったら → 即時更新 + polling 再開 + WakeLock 再取得
+  //   非表示になったら → polling を完全停止 (GAS 制限を共有しているため)
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
+    if (document.hidden) {
+      stopAutoRefresh();
+    } else {
       pollUpdate();
+      startAutoRefresh();
       acquireWakeLock();
       tickStopTimeNow();
     }
