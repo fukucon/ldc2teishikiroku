@@ -579,6 +579,21 @@
     flex: 0 0 56px;
     font-weight: 400;
   }
+  /* 製造開始/終了 の担当/廃棄 input を ! バッジで囲む小ラッパー */
+  .prod-extra-wrap {
+    position: relative;
+    display: inline-flex; align-items: center;
+    flex-shrink: 0;
+  }
+  .prod-extra-wrap.wrap-empty > input {
+    background: #fee2e2;
+    border-color: #fca5a5;
+  }
+  .prod-extra-wrap.wrap-empty .field-empty-mark { display: flex; }
+  .prod-extra-wrap .field-empty-mark {
+    /* グローバル定義の field-empty-mark を継承するが、製造時間行用に位置調整 */
+    top: -6px; right: -6px;
+  }
 
   .save-indicator {
     width: 10px; height: 10px; border-radius: 50%;
@@ -876,12 +891,18 @@
         </span>
         <span class="save-indicator" id="start-save"></span>
         <span class="prod-extra-label">担当</span>
-        <input type="text" id="prod-start-charge" data-ac="charge" class="prod-extra-input"
-               placeholder="開始担当者" onblur="saveCycleStartCharge()">
+        <span class="prod-extra-wrap" id="prod-start-charge-wrap">
+          <input type="text" id="prod-start-charge" data-ac="charge" class="prod-extra-input"
+                 placeholder="開始担当者" onblur="saveCycleStartCharge()">
+          <span class="field-empty-mark" aria-label="未入力">!</span>
+        </span>
         <span class="save-indicator" id="start-charge-save"></span>
         <span class="prod-extra-label">廃棄</span>
-        <input type="text" id="prod-start-wastage" inputmode="numeric" class="prod-extra-input-num"
-               placeholder="0" onblur="saveCycleStartWastage()">
+        <span class="prod-extra-wrap" id="prod-start-wastage-wrap">
+          <input type="text" id="prod-start-wastage" inputmode="numeric" class="prod-extra-input-num"
+                 placeholder="0" onblur="saveCycleStartWastage()">
+          <span class="field-empty-mark" aria-label="未入力">!</span>
+        </span>
         <span class="save-indicator" id="start-wastage-save"></span>
       </div>
       <span class="prod-separator">〜</span>
@@ -897,8 +918,11 @@
         </span>
         <span class="save-indicator" id="end-save"></span>
         <span class="prod-extra-label">担当</span>
-        <input type="text" id="prod-end-charge" data-ac="charge" class="prod-extra-input"
-               placeholder="終了担当者" onblur="saveCycleEndCharge()">
+        <span class="prod-extra-wrap" id="prod-end-charge-wrap">
+          <input type="text" id="prod-end-charge" data-ac="charge" class="prod-extra-input"
+                 placeholder="終了担当者" onblur="saveCycleEndCharge()">
+          <span class="field-empty-mark" aria-label="未入力">!</span>
+        </span>
         <span class="save-indicator" id="end-charge-save"></span>
       </div>
     </div>
@@ -1250,6 +1274,7 @@ function softMerge(detail) {
       : (detail.cycle.startWastage !== '' && detail.cycle.startWastage != null ? String(detail.cycle.startWastage) : '');
   }
   if (eCh && ae !== eCh) eCh.value = detail.cycle.endCharge || '';
+  updateProdExtraEmpty();
 
   // 停止記録一覧: 行内フィールド編集中ならスキップ（次回反映）
   STATE.stopRecords = detail.stopRecords || [];
@@ -1326,6 +1351,9 @@ window.addEventListener('DOMContentLoaded', () => {
   // 入力中はインジケータをグレーに戻す（青→グレー→保存時に黄→青）+ 未入力ハイライト切替
   document.addEventListener('input', (e) => {
     const t = e.target;
+    // 製造開始/終了の担当・廃棄 (prod-extra-wrap 配下)
+    const px = t.closest && t.closest('.prod-extra-wrap');
+    if (px) { updateProdExtraEmpty(); return; }
     if (!t.classList || !t.classList.contains('record-field')) return;
     const lid = t.dataset.logId;
     const field = t.dataset.field;
@@ -1649,6 +1677,7 @@ function initProdTimes() {
     (c.startWastage === 0 || c.startWastage === '0') ? '—'
     : (c.startWastage !== '' && c.startWastage != null ? String(c.startWastage) : '');
   document.getElementById('prod-end-charge').value    = c.endCharge    || '';
+  updateProdExtraEmpty();
 }
 
 // V/W/X 保存ハンドラ
@@ -1675,6 +1704,25 @@ function _saveCycleField(field, value, indId) {
       setSaveIndicator(indId, 'error', (res && res.error) || 'エラー');
     }
   }).catch(err => setSaveIndicator(indId, 'error', err.message));
+}
+
+// 製造開始/終了 の担当/廃棄 input の wrap-empty 状態を一括同期
+function updateProdExtraEmpty() {
+  const cases = [
+    { inp: 'prod-start-charge',  wrap: 'prod-start-charge-wrap'  },
+    { inp: 'prod-start-wastage', wrap: 'prod-start-wastage-wrap' },
+    { inp: 'prod-end-charge',    wrap: 'prod-end-charge-wrap'    }
+  ];
+  cases.forEach(c => {
+    const inp = document.getElementById(c.inp);
+    const wrap = document.getElementById(c.wrap);
+    if (!inp || !wrap) return;
+    const v = String(inp.value || '').trim();
+    // 廃棄本数: "—" / "0" / 空 はすべて未入力扱い
+    const isWastage = c.inp === 'prod-start-wastage';
+    const empty = isWastage ? (v === '' || v === '—' || v === '0') : (v === '');
+    wrap.classList.toggle('wrap-empty', empty);
+  });
 }
 
 function onProdStartChange() {
