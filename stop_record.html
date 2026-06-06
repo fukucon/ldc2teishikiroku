@@ -722,6 +722,8 @@
     grid-template-columns: repeat(4, 1fr);
     gap: 4px 8px;
   }
+  /* 2L のみ row-1 に BPM 列が増えて 5 列 (BPM は狭め) */
+  .record-row-1.has-bpm { grid-template-columns: 60px repeat(4, 1fr); }
   .record-fields-grid .field-label { font-size: 11px; margin-bottom: 1px; }
   .record-fields-grid input,
   .record-fields-grid select {
@@ -2065,10 +2067,11 @@ function buildRecordsTable() {
   const is500ml = STATE.cycle && STATE.cycle.line === '500ml';
   const tempLabel = is500ml ? 'フィラー温度' : 'MF温度';
   const headers = [
-    'No.', '日付', 'ストップ', 'スタート', '分',
-    '停止設備', '停止理由', '対応内容', '担当',
-    'CR入室', '廃棄本数', tempLabel
+    'No.', '日付', 'ストップ', 'スタート', '分'
   ];
+  if (!is500ml) headers.push('BPM');
+  headers.push('停止設備', '停止理由', '対応内容', '担当',
+    'CR入室', '廃棄本数', tempLabel);
   if (!is500ml) headers.push('TEA温度');
   headers.push('商品');
 
@@ -2099,7 +2102,13 @@ function buildRecordsTable() {
       { v: stopMD, c: 'center' },
       { v: stopHM, c: 'center' },
       { v: startHM, c: 'center' + (r.startAt ? '' : ' dim') },
-      { v: minStr, c: 'num' + (r.startAt ? '' : ' dim') },
+      { v: minStr, c: 'num' + (r.startAt ? '' : ' dim') }
+    ];
+    if (!is500ml) {
+      const bpmVal = Number(r.bpm || 0);
+      cells.push({ v: String(bpmVal), c: 'num' + (bpmVal === 0 ? ' dim' : '') });
+    }
+    cells.push(
       { v: r.equipment || dash, c: r.equipment ? '' : 'dim' },
       { v: r.reason    || dash, c: r.reason    ? '' : 'dim' },
       { v: r.action    || dash, c: r.action    ? '' : 'dim' },
@@ -2110,7 +2119,7 @@ function buildRecordsTable() {
         c: 'num' + ((r.wastage !== '' && r.wastage != null) ? '' : ' dim') },
       { v: (r.ufTemp !== '' && r.ufTemp != null) ? String(r.ufTemp) : dash,
         c: 'num' + ((r.ufTemp !== '' && r.ufTemp != null) ? '' : ' dim') }
-    ];
+    );
     if (!is500ml) {
       cells.push({
         v: (r.teaTemp !== '' && r.teaTemp != null) ? String(r.teaTemp) : dash,
@@ -2308,7 +2317,20 @@ function renderRecordList() {
           <span class="record-minutes ${hasStart ? '' : 'pending'}" data-min="${lid}">${minutesStr}</span>
           ${productCell}
         </div>
-        <div class="record-fields-grid record-row-1">
+        <div class="record-fields-grid record-row-1${is500ml ? '' : ' has-bpm'}">
+          ${is500ml ? '' : `
+          <div>
+            <div class="field-label">BPM</div>
+            <div class="field-input-wrap">
+              <select class="record-field" data-log-id="${lid}" data-field="bpm"
+                onchange="saveRecordField('${lid}', 'bpm', this.value)">
+                ${[0,80,60,40,20].map(v =>
+                  '<option value="' + v + '"' + (Number(r.bpm || 0) === v ? ' selected' : '') + '>' + v + '</option>'
+                ).join('')}
+              </select>
+              <span class="rec-ind" data-ind="${lid}-bpm"></span>
+            </div>
+          </div>`}
           <div>
             <div class="field-label">停止設備</div>
             <div class="field-input-wrap${emptyCls(r.equipment)}">

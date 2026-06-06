@@ -107,7 +107,8 @@ const LOG_COLS = [
   '切替後商品名',     // 16 商品マスターからのスナップショット
   '切替後商品種別',   // 17 同上 (2L / 500ml)
   '切替後商品通称',   // 18 同上
-  '切替前商品名'      // 19 (移行データ用) 「X→Y」で記録されていた切替前商品名
+  '切替前商品名',     // 19 (移行データ用) 「X→Y」で記録されていた切替前商品名
+  'BPM'              // 20 (U列) 2L のみ使用。速度。0/20/40/60/80 から選択
 ];
 const LC = {};
 LOG_COLS.forEach((n, i) => LC[n] = i);
@@ -450,7 +451,8 @@ function api_addStopRecord(payload) {
       '',          // 切替後商品名
       '',          // 切替後商品種別
       '',          // 切替後商品通称
-      ''           // 切替前商品名
+      '',          // 切替前商品名
+      0            // BPM (U列): デフォルト 0
     ]);
 
     // 親のキャッシュ列を更新
@@ -648,7 +650,8 @@ function api_updateStopRecordFields(payload) {
     wastage:      '廃棄本数',
     ufTemp:       'MF温度',
     teaTemp:      'TEA温度',
-    newProductID: '切替後商品ID'
+    newProductID: '切替後商品ID',
+    bpm:          'BPM'
   };
 
   const lock = LockService.getScriptLock();
@@ -677,7 +680,7 @@ function api_updateStopRecordFields(payload) {
           const colName = fieldMap[key];
           if (!colName) return;
           let value = fields[key];
-          if (key === 'wastage') {
+          if (key === 'wastage' || key === 'bpm') {
             const n = parseInt(value, 10);
             value = isNaN(n) ? 0 : n;   // 「—」など非数値は 0 として保存
           }
@@ -920,7 +923,8 @@ function _getStopRecords(cycleID) {
       newProductName: r[16] ? String(r[16]) : '',
       newProductKind: r[17] ? String(r[17]) : '',
       newProductNickname: r[18] ? String(r[18]) : '',
-      prevProductName: r[19] ? String(r[19]) : ''
+      prevProductName: r[19] ? String(r[19]) : '',
+      bpm: (r[20] === '' || r[20] == null) ? 0 : Number(r[20])
     }))
     .sort((a, b) => (a.stopAt < b.stopAt ? -1 : a.stopAt > b.stopAt ? 1 : 0));
 }
