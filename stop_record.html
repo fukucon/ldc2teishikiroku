@@ -835,14 +835,17 @@
   .btn-danger:hover { background: #b91c1c; }
   .modal-message.danger { color: #dc2626; font-weight: 700; }
 
-  /* 同期インジケータ */
+  /* 同期インジケータ (中央寄せ) */
   #sync-indicator {
     position: fixed; bottom: 0; left: 0; right: 0;
     background: var(--surface); border-top: 1px solid var(--border);
     padding: 8px 16px; font-size: 13px; color: var(--muted);
-    display: flex; justify-content: space-between; align-items: center;
+    display: flex; justify-content: center; align-items: center; gap: 16px;
     z-index: 20;
   }
+  #sync-text { font-weight: 600; }
+  #sync-text .missing { color: #dc2626; }
+  #sync-text .ok      { color: #16a34a; }
 
   /* ローディング */
   .skeleton {
@@ -977,8 +980,7 @@
 </main>
 
 <div id="sync-indicator">
-  <span id="sync-text">未送信: 0件</span>
-  <span id="sync-time" style="font-size: 11px;"></span>
+  <span id="sync-text" class="ok">全項目入力済</span>
 </div>
 
 <!-- 汎用モーダル -->
@@ -1371,6 +1373,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (ind) ind.className = 'rec-ind';
     const wrap = t.closest('.field-input-wrap');
     if (wrap) wrap.classList.toggle('wrap-empty', !String(t.value || '').trim());
+    updateMissingCount();
   });
 
   // タブレット: 本当に「外」を タップした時のみ blur（誤発火防止のため、
@@ -1715,6 +1718,18 @@ function _saveCycleField(field, value, indId) {
   }).catch(err => setSaveIndicator(indId, 'error', err.message));
 }
 
+// 「未入力 (! マーク数)」をフッターに反映
+function updateMissingCount() {
+  const el = document.getElementById('sync-text');
+  if (!el) return;
+  const n = document.querySelectorAll('.wrap-empty').length;
+  if (n === 0) {
+    el.innerHTML = '<span class="ok">✓ 全項目入力済</span>';
+  } else {
+    el.innerHTML = '<span class="missing">⚠ 未入力 ' + n + ' 件</span>';
+  }
+}
+
 // 製造開始/終了 の担当/廃棄 input の wrap-empty 状態を一括同期
 function updateProdExtraEmpty() {
   const cases = [
@@ -1730,6 +1745,7 @@ function updateProdExtraEmpty() {
     // 廃棄本数も「—/0」は「明示的になし」を選んだ状態として OK 扱い
     wrap.classList.toggle('wrap-empty', v === '');
   });
+  updateMissingCount();
 }
 
 function onProdStartChange() {
@@ -2393,6 +2409,7 @@ function renderRecordList() {
         </div>
       </div>`;
   }).join('');
+  updateMissingCount();
 }
 
 function findInd(logID, fieldKey) {
