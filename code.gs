@@ -1333,6 +1333,11 @@ function _validateCycleForConfirm(cycle, stopRecords) {
   if (!cycle.productID)         errs.push('商品が未選択です');
   if (!cycle.productionStartAt) errs.push('製造開始時刻が未入力です');
   if (!cycle.productionEndAt)   errs.push('製造終了時刻が未入力です');
+  if (!cycle.startCharge)       errs.push('開始担当者が未入力です');
+  // 開始廃棄本数: 未入力 (null/'') のみ警告。0 は「—」を明示選択した状態なので OK
+  if (cycle.startWastage === '' || cycle.startWastage == null)
+    errs.push('開始廃棄本数が未入力です');
+  if (!cycle.endCharge)         errs.push('終了担当者が未入力です');
 
   (stopRecords || []).forEach((r) => {
     const tag = _formatStopTimeTag(r.stopAt);

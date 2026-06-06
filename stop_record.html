@@ -176,6 +176,15 @@
     min-height: 34px; white-space: nowrap;
   }
   .btn-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* 未確定 + 製造終了済 のとき: 注目を引くパルスアニメーション */
+  .btn-confirm.attention {
+    animation: confirm-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes confirm-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.75); transform: scale(1); }
+    60%  { box-shadow: 0 0 0 14px rgba(220, 38, 38, 0);  transform: scale(1.06); }
+    100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);     transform: scale(1); }
+  }
   .confirm-badge {
     display: inline-flex; align-items: center; gap: 4px;
     font-size: 12px; font-weight: 700;
@@ -1718,10 +1727,8 @@ function updateProdExtraEmpty() {
     const wrap = document.getElementById(c.wrap);
     if (!inp || !wrap) return;
     const v = String(inp.value || '').trim();
-    // 廃棄本数: "—" / "0" / 空 はすべて未入力扱い
-    const isWastage = c.inp === 'prod-start-wastage';
-    const empty = isWastage ? (v === '' || v === '—' || v === '0') : (v === '');
-    wrap.classList.toggle('wrap-empty', empty);
+    // 廃棄本数も「—/0」は「明示的になし」を選んだ状態として OK 扱い
+    wrap.classList.toggle('wrap-empty', v === '');
   });
 }
 
@@ -1778,6 +1785,7 @@ function onProdEndChange() {
     return;
   }
   const iso = y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0') + 'T' + t + ':00';
+  const wasEmpty = !STATE.cycle.productionEndAt;
   setSaveIndicator('end-save', 'saving', '保存中…');
   gas('api_updateCycleField', {
     cycleID: STATE.cycle.cycleID, field: 'productionEndAt', value: iso
@@ -1785,6 +1793,11 @@ function onProdEndChange() {
     if (res.success) {
       STATE.cycle.productionEndAt = iso;
       setSaveIndicator('end-save', 'saved', '保存');
+      updateConfirmUI();  // パルス開始
+      // 製造終了時刻を新規に入れた瞬間 + 未確定 → モーダルでお願い
+      if (wasEmpty && !STATE.cycle.confirmedAt) {
+        showModal('日報の確定をお願いします。', '✅');
+      }
     } else {
       setSaveIndicator('end-save', 'error', res.error || 'エラー');
     }
@@ -2136,7 +2149,9 @@ function updateConfirmUI() {
   if (banner) banner.style.display = readonly ? '' : 'none';
 
   if (!isConfirmed) {
-    area.innerHTML = '<button class="btn-confirm" onclick="confirmCycle()">日報を確定</button>';
+    // 製造終了時刻が入っていれば注目パルス
+    const attentionCls = c.productionEndAt ? ' attention' : '';
+    area.innerHTML = '<button class="btn-confirm' + attentionCls + '" onclick="confirmCycle()">日報を確定</button>';
   } else {
     const dt = new Date(c.confirmedAt);
     const ds = (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + hhmmFromDate(dt);
