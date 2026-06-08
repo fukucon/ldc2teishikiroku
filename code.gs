@@ -1206,7 +1206,9 @@ function _getDepartments() {
 
 /**
  * 商品マスター取得（共通マスタースプシの「商品マスター」シートから）
- *   A列: 商品ID, B列: 商品名, C列: 種別（2L / 500ml）, D列: 商品通称, E列: 有効
+ *   想定列: 商品ID / 商品名 / 種別（2L / 500ml）/ 商品通称 / バーコード / 有効
+ *   ※ 列の並び替え・列挿入（バーコード等）に強いよう、1行目のヘッダー名で列位置を解決する。
+ *     ヘッダーが見つからない場合は従来の固定位置 (ID=A, 名=B, 種別=C, 通称=D, 有効=E) に fallback。
  *   有効列に false が入っている行は除外（空欄 / true / 未定義 は有効扱い）
  */
 function _getProducts() {
@@ -1219,15 +1221,31 @@ function _getProducts() {
     const ss = _masterSS();
     const sheet = ss.getSheetByName(CONFIG.MASTER_PRODUCT);
     if (sheet && sheet.getLastRow() >= 2) {
-      const cols = Math.min(5, sheet.getLastColumn());
-      const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, cols).getValues();
+      const lastCol = sheet.getLastColumn();
+      const all = sheet.getRange(1, 1, sheet.getLastRow(), lastCol).getValues();
+      const header = all[0].map(h => String(h || '').trim());
+
+      // ヘッダー名から列 index を解決（候補のいずれかに一致した最初の列）
+      const find = (cands, fallback) => {
+        for (let i = 0; i < header.length; i++) {
+          if (cands.indexOf(header[i]) !== -1) return i;
+        }
+        return fallback;
+      };
+      const iId       = find(['商品ID', 'ID', '商品コード'], 0);
+      const iName     = find(['商品名', '名称'], 1);
+      const iKind     = find(['種別', '商品種別', 'ライン'], 2);
+      const iNickname = find(['商品通称', '通称', '略称'], 3);
+      const iActive   = find(['有効', '有効フラグ'], -1);  // 見つからなければ全件有効扱い
+
+      const rows = all.slice(1);
       products = rows
-        .filter(r => r[0] && r[4] !== false)   // 有効列が明示的に false の行を除外
+        .filter(r => r[iId] && (iActive < 0 || r[iActive] !== false))  // 有効列が明示的に false の行を除外
         .map(r => ({
-          id: String(r[0]),
-          name: String(r[1] || r[0]),
-          kind: String(r[2] || ''),
-          nickname: String(r[3] || r[1] || r[0])
+          id: String(r[iId]),
+          name: String(r[iName] || r[iId]),
+          kind: String(r[iKind] || ''),
+          nickname: String(r[iNickname] || r[iName] || r[iId])
         }));
     }
   } catch (e) {
