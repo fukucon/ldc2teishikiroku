@@ -27,7 +27,7 @@ const CONFIG = {
   // 共通マスタースプシ内
   MASTER_DEPT:        '部署マスタ',
   MASTER_STAFF:       '社員名簿',
-  MASTER_PRODUCT:     '商品マスター',
+  MASTER_PRODUCT:     '商品マスタ',     // シート名ゆらぎ対策で _getProducts は 商品マスター も fallback で探す
   MASTER_PERMISSIONS: '管理者名簿',     // A:氏名 / B:メール / C:権限レベル(一般/リーダー/全権)
 
   // ラインマスタ（ハードコード）
@@ -1219,7 +1219,10 @@ function _getProducts() {
   let products = [];
   try {
     const ss = _masterSS();
-    const sheet = ss.getSheetByName(CONFIG.MASTER_PRODUCT);
+    // シート名ゆらぎ（商品マスター / 商品マスタ）の両方を許容
+    const sheet = ss.getSheetByName(CONFIG.MASTER_PRODUCT)
+               || ss.getSheetByName('商品マスタ')
+               || ss.getSheetByName('商品マスター');
     if (sheet && sheet.getLastRow() >= 2) {
       const lastCol = sheet.getLastColumn();
       const all = sheet.getRange(1, 1, sheet.getLastRow(), lastCol).getValues();
