@@ -343,6 +343,7 @@
     display: inline-flex; align-items: center; gap: 6px;
     padding-left: 8px; margin-left: 4px;
     border-left: 1px solid #d1d5db;
+    position: relative;          /* ! バッジの基準 */
   }
   .add-bar-product-label { font-size: 13px; font-weight: 700; color: var(--muted); }
   .add-bar-product select {
@@ -351,6 +352,11 @@
     border: 1px solid #d1d5db; border-radius: 5px;
     min-width: 160px;
   }
+  .add-bar-product.wrap-empty > select {
+    background: #fee2e2; border-color: #fca5a5;
+  }
+  .add-bar-product.wrap-empty .field-empty-mark { display: flex; }
+  .add-bar-product .field-empty-mark { top: -6px; right: -6px; }
 
   /* ── 月日(紫) / 開始時刻(青) / 終了・停止時刻(赤) の色分け ── */
   /* 月/日 セレクタは紫枠 */
@@ -951,10 +957,11 @@
         <span class="colon">:</span>
         <select id="stop-stop-minute"></select>
       </span>
-      <span class="add-bar-product">
+      <span class="add-bar-product" id="cycle-product-wrap">
         <span class="add-bar-product-label">商品</span>
         <select id="cycle-product" onchange="saveCycleProduct()"></select>
         <span class="save-indicator" id="cycle-product-save"></span>
+        <span class="field-empty-mark">!</span>
       </span>
       <button class="btn-primary btn-add-small" id="stop-add-btn" onclick="addStopRecord()">追加</button>
     </div>
@@ -2001,6 +2008,18 @@ function populateCycleProductSelect() {
   if (document.activeElement === sel) return;   // 編集中はスキップ
   // セレクタ表示は「最新の商品」(全商品切替を時系列で反映)
   sel.innerHTML = productOptionsHtml(lineProducts(), computeCurrentProduct());
+  updateCycleProductEmpty();
+}
+
+// サイクル商品セレクタの未入力マーク同期
+//   backend の確定バリデーションは cycle.productID を見るので、それに合わせる
+//   (品種切替で表示値が埋まっていても、cycle初期商品が空なら未入力扱い)
+function updateCycleProductEmpty() {
+  const wrap = document.getElementById('cycle-product-wrap');
+  if (!wrap || !STATE.cycle) return;
+  const empty = !String(STATE.cycle.productID || '').trim();
+  wrap.classList.toggle('wrap-empty', empty);
+  updateMissingCount();
 }
 
 function saveCycleProduct() {
@@ -2019,6 +2038,7 @@ function saveCycleProduct() {
     STATE.cycle.productID = val;
     STATE.lastProducts[line] = val;
     setSaveIndicator('cycle-product-save', 'saved');
+    updateCycleProductEmpty();
     renderRecordList();
   }).catch(() => setSaveIndicator('cycle-product-save', 'error'));
 }
