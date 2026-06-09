@@ -2211,19 +2211,35 @@ function updateConfirmUI() {
 
 function confirmCycle() {
   if (!STATE.cycle) return;
+  const btn = document.querySelector('.btn-confirm');
+  if (btn) {
+    if (btn.disabled) return;   // 二重送信ガード
+    btn.disabled = true;
+    btn.dataset.origText = btn.textContent;
+    btn.textContent = '確定中…';
+  }
+  const restore = () => {
+    if (!btn) return;
+    btn.disabled = false;
+    if (btn.dataset.origText) btn.textContent = btn.dataset.origText;
+  };
   gas('api_confirmCycle', { cycleID: STATE.cycle.cycleID }).then(res => {
     if (!res.success) {
       const msg = res.validationErrors
         ? '未入力があります:\n\n' + res.validationErrors.join('\n')
         : (res.error || '確定失敗');
       showModal(msg, '⚠');
+      restore();
       return;
     }
     STATE.cycle.confirmedAt = res.confirmedAt;
     STATE.cycle.confirmedBy = res.confirmedBy;
-    updateConfirmUI();
+    updateConfirmUI();   // 成功時はボタン自体が「✓ 確定済」表示に置き換わる
     showModal('日報を確定しました。', '✓');
-  }).catch(err => showModal('通信エラー: ' + (err.message || err), '⚠'));
+  }).catch(err => {
+    showModal('通信エラー: ' + (err.message || err), '⚠');
+    restore();
+  });
 }
 
 function unconfirmCycle() {
