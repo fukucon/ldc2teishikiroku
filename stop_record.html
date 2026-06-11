@@ -352,6 +352,11 @@
     border: 1px solid #d1d5db; border-radius: 5px;
     min-width: 160px;
   }
+  /* 品種切替記録ありでロック中: グレー表示 (変更は品種切替で行う) */
+  .add-bar-product select:disabled {
+    background: #f3f4f6; color: var(--muted);
+    border-color: #e5e7eb; opacity: 1;
+  }
   .add-bar-product.wrap-empty > select {
     background: #fee2e2; border-color: #fca5a5;
   }
@@ -1205,6 +1210,7 @@ function doDeleteRecord(logID) {
     }
     STATE.stopRecords = (STATE.stopRecords || []).filter(r => r.logID !== logID);
     renderRecordList();
+    populateCycleProductSelect();   // 品種切替を消した場合、商品セレクタの表示/ロックを更新
   }).catch(err => showModal('通信エラー: ' + (err.message || err), '⚠'));
 }
 
@@ -2008,6 +2014,14 @@ function populateCycleProductSelect() {
   if (document.activeElement === sel) return;   // 編集中はスキップ
   // セレクタ表示は「最新の商品」(全商品切替を時系列で反映)
   sel.innerHTML = productOptionsHtml(lineProducts(), computeCurrentProduct());
+  // 品種切替の記録が既にあるサイクルでは初期商品の変更をロック
+  //  (このセレクタの保存先は「サイクル初期商品」なので、切替後に変えると
+  //   切替前の全記録の商品表示が遡って変わってしまう。以降の変更は品種切替で行う)
+  //  ただし初期商品が未設定のままなら、確定できなくなるためロックしない
+  const hasSwitch = (STATE.stopRecords || []).some(r => r.newProductID);
+  const locked = hasSwitch && !!String(STATE.cycle.productID || '').trim();
+  sel.disabled = locked;
+  sel.title = locked ? '品種切替の記録があるため変更できません。商品の変更は品種切替の停止記録で行ってください。' : '';
   updateCycleProductEmpty();
 }
 
