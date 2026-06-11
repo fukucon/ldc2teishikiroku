@@ -235,6 +235,11 @@
     cursor: pointer; min-height: 60px;
   }
   .cycle-card:active { background: #f1f3f4; }
+  .cycle-card-unconfirmed {
+    background: #fce7f3;
+    border-color: #f9a8d4;
+  }
+  .cycle-card-unconfirmed:active { background: #fbcfe8; }
   .cycle-actions {
     flex-shrink: 0; margin-left: auto;
     display: flex; flex-direction: row; gap: 6px; align-items: center;
@@ -748,8 +753,9 @@ function renderCycleCard(c) {
     ? `<button class="cycle-delete-btn" onclick="event.stopPropagation(); showDeleteCycleModal('${c.cycleID}')" title="日報を削除">削除</button>`
     : '';
   const printBtn = `<button class="cycle-print-btn" onclick="event.stopPropagation(); printCycle('${c.cycleID}', this)" title="印刷">🖨 印刷</button>`;
+  const unconfirmedClass = c.confirmedAt ? '' : ' cycle-card-unconfirmed';
   return `
-    <div class="cycle-card" onclick="openCycle('${c.cycleID}')">
+    <div class="cycle-card${unconfirmedClass}" onclick="openCycle('${c.cycleID}')">
       <div class="cycle-date">${dateLabel}</div>
       <div class="cycle-info">
         ${versionBadge ? `<div class="cycle-id">${versionBadge}</div>` : ''}
