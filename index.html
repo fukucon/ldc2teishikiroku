@@ -233,13 +233,23 @@
     padding: 12px; margin-bottom: 6px;
     display: flex; align-items: center; gap: 12px;
     cursor: pointer; min-height: 60px;
+    position: relative;
   }
   .cycle-card:active { background: #f1f3f4; }
   .cycle-card-unconfirmed {
     background: #fce7f3;
     border-color: #f9a8d4;
+    padding-top: 20px;
   }
   .cycle-card-unconfirmed:active { background: #fbcfe8; }
+  .cycle-status-badge {
+    position: absolute;
+    top: 4px; left: 6px;
+    font-size: 9px; font-weight: 700;
+    background: #ec4899; color: #fff;
+    padding: 1px 6px; border-radius: 4px;
+    line-height: 1.3; letter-spacing: 0.03em;
+  }
   .cycle-actions {
     flex-shrink: 0; margin-left: auto;
     display: flex; flex-direction: row; gap: 6px; align-items: center;
@@ -268,9 +278,23 @@
     font-size: 14px; font-weight: 700; cursor: pointer;
   }
   .btn-danger:hover { background: #b91c1c; }
+  .cycle-date-block {
+    flex-shrink: 0;
+    min-width: 60px;
+    text-align: center;
+  }
   .cycle-date {
-    font-size: 22px; font-weight: 700; min-width: 60px; text-align: center;
+    font-size: 22px; font-weight: 700;
     color: var(--text);
+    line-height: 1.1;
+  }
+  .cycle-id-small {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: ui-monospace, monospace;
+    margin-top: 2px;
+    line-height: 1.1;
+    word-break: break-all;
   }
   .cycle-info { flex: 1; min-width: 0; }
   .cycle-id {
@@ -754,9 +778,14 @@ function renderCycleCard(c) {
     : '';
   const printBtn = `<button class="cycle-print-btn" onclick="event.stopPropagation(); printCycle('${c.cycleID}', this)" title="印刷">🖨 印刷</button>`;
   const unconfirmedClass = c.confirmedAt ? '' : ' cycle-card-unconfirmed';
+  const statusBadge = c.confirmedAt ? '' : '<span class="cycle-status-badge">未確定</span>';
   return `
     <div class="cycle-card${unconfirmedClass}" onclick="openCycle('${c.cycleID}')">
-      <div class="cycle-date">${dateLabel}</div>
+      ${statusBadge}
+      <div class="cycle-date-block">
+        <div class="cycle-date">${dateLabel}</div>
+        <div class="cycle-id-small">${c.cycleID}</div>
+      </div>
       <div class="cycle-info">
         ${versionBadge ? `<div class="cycle-id">${versionBadge}</div>` : ''}
         <div class="cycle-meta">
