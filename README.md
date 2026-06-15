@@ -254,6 +254,36 @@ Google Apps Script の Web App としてデプロイ:
 
 ---
 
+## 外部スプレッドシート同期 (`sync.gs`)
+
+ライン横断の分析・上長共有用に、別スプシ (`EXTERNAL_SYNC_CONFIG.EXTERNAL_SS_ID`) の **`2L` / `500`** シートへ差分転送する仕組み。
+
+- **トリガー**: 3時間ごとの時間トリガー (`syncToExternalSpreadsheet`)
+- **差分キー**: `HEADER_COLS['最終更新']`（停止ログ追加・編集・確定・解除でも親側がこの値を更新するので一発で拾える）
+- **書き出し単位**: 「サイクル1行 + 直下に停止ログ複数行」のブロック。同一CycleIDのブロックを丸ごと置換することで再書込時の整合性を担保
+- **書き出しレイアウト**: `SYNC_COLS` (25列) — A列=種別(`日報`/`└停止`)、B列=サイクルID(置換キー)、以下日付/時刻/各種項目を共通スキーマで並べる
+- **並び順**: 同期処理ごとに更新分を製造日 desc で2行目以下に挿入するため、最新の動きが常に上に積み上がる
+- **状態**: `PropertiesService` の `EXTERNAL_SYNC_LAST` に最終同期時刻を保存
+
+### セットアップ（Apps Script エディタから1回）
+
+```
+setupExternalSyncTrigger()    // 3時間トリガー作成
+syncToExternalSpreadsheet()   // 動作確認: 初回は全件転送される
+```
+
+### 運用関数
+
+| 関数 | 用途 |
+|---|---|
+| `syncToExternalSpreadsheet()` | 差分同期を即実行（トリガーから自動でも呼ばれる） |
+| `setupExternalSyncTrigger()` | 3時間トリガーを作り直す |
+| `removeExternalSyncTrigger()` | トリガー解除 |
+| `resetExternalSyncCheckpoint()` | 最終同期時刻をクリア。次回sync時に全件再転送 |
+| `showExternalSyncStatus()` | 最終同期時刻・トリガー数を Logger に出す |
+
+---
+
 ## 開発・運用メモ (AI セッションへの注意点)
 
 1. **共通マスタースプシのスキーマを勝手に変えない**。列追加・削除は他アプリへの影響を確認してから
