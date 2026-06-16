@@ -2004,8 +2004,8 @@ function productName(id) {
   if (!id) return '';
   const p = (STATE.products || []).find(x => x.id === id);
   if (!p) return id;
-  // 表示は通称優先、なければ名、それもなければ id
-  return p.nickname || p.name || p.id;
+  const base = p.nickname || p.name || p.id;
+  return base + (p.liquid ? '【' + p.liquid + '】' : '');
 }
 // このサイクルの「ベース商品」: cycle.productID > lastProducts[line] > 空
 function baseProductID() {
@@ -2034,7 +2034,8 @@ function productOptionsHtml(products, currentValue) {
   let opts = '<option value="">— 未選択 —</option>';
   products.forEach(p => {
     const sel = p.id === currentValue ? ' selected' : '';
-    const label = p.nickname || p.name || p.id;
+    const base = p.nickname || p.name || p.id;
+    const label = base + (p.liquid ? '【' + p.liquid + '】' : '');
     opts += '<option value="' + escapeAttr(p.id) + '"' + sel + '>' + escapeHtml(label) + '</option>';
   });
   return opts;

@@ -1252,6 +1252,7 @@ function _getProducts() {
       const iKind     = find(['種別', '商品種別', 'ライン'], 2);
       const iNickname = find(['商品通称', '通称', '略称'], 3);
       const iActive   = find(['有効', '有効フラグ'], -1);  // 見つからなければ全件有効扱い
+      const iLiquid   = find(['液種', '液体種別'], -1);
 
       const rows = all.slice(1);
       products = rows
@@ -1260,7 +1261,8 @@ function _getProducts() {
           id: String(r[iId]),
           name: String(r[iName] || r[iId]),
           kind: String(r[iKind] || ''),
-          nickname: String(r[iNickname] || r[iName] || r[iId])
+          nickname: String(r[iNickname] || r[iName] || r[iId]),
+          liquid: iLiquid >= 0 ? String(r[iLiquid] || '') : ''
         }));
     }
   } catch (e) {
@@ -1911,10 +1913,10 @@ function _sendApprovalRequestEmail(toEmail, cycle, requesterEmail) {
  * 商品IDからマスタの全情報を引く（無ければデフォルト）
  */
 function _resolveProduct(productID) {
-  if (!productID) return { id: '', name: '', kind: '', nickname: '' };
+  if (!productID) return { id: '', name: '', kind: '', nickname: '', liquid: '' };
   const products = _getProducts();
   const p = products.find(x => x.id === productID);
-  return p || { id: productID, name: '', kind: '', nickname: '' };
+  return p || { id: productID, name: '', kind: '', nickname: '', liquid: '' };
 }
 
 /**
