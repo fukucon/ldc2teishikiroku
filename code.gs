@@ -1600,8 +1600,7 @@ function _writeApprovalSeal(sh, cycle) {
     .setFontSize(7)
     .setHorizontalAlignment('center')
     .setVerticalAlignment('middle')
-    .setWrap(true)
-    .setBorder(true, true, true, true, false, false, '#cc0000', SpreadsheetApp.BorderStyle.SOLID_THICK);
+    .setWrap(true);
 }
 
 function _fillPrintPage(sh, cycle, pageRows, pageNo, isFirstPage) {
@@ -1858,14 +1857,12 @@ function api_unapproveCycle(payload) {
 }
 
 /**
- * 提出モーダルの「承認依頼先」候補: 管理者名簿の リーダー / 全権 全員
+ * 提出モーダルの「承認依頼先」候補: 管理者名簿の リーダー のみ
+ *   （全権 は承認権限はあるが承認依頼先候補には載せない）
  */
 function api_getLeaders() {
   return _getPermissions()
-    .filter(p => {
-      const lvl = _normalizePermissionLevel(p.level);
-      return lvl === 'リーダー' || lvl === '全権';
-    })
+    .filter(p => _normalizePermissionLevel(p.level) === 'リーダー')
     .map(p => ({ name: p.name, email: p.email }));
 }
 

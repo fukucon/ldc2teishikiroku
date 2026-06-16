@@ -2262,9 +2262,7 @@ function updateConfirmUI() {
     const badge = '<span class="confirm-badge submit-pending" title="' + escapeAttr(reqTo) + '">✉ 提出済（承認待ち）' + ds + '</span>';
     const approveBtn  = STATE.canEditConfirmed
       ? '<button class="btn-approve" onclick="approveCycle()">承認する</button>' : '';
-    const unsubmitBtn = STATE.canEditConfirmed
-      ? '<button class="btn-unconfirm" onclick="unsubmitCycle()">提出取消</button>' : '';
-    area.innerHTML = badge + approveBtn + unsubmitBtn;
+    area.innerHTML = badge + approveBtn;
   } else {
     // 承認済: 緑バッジ + (リーダーなら 承認取消)
     const dt = new Date(c.approvedAt);
@@ -2367,26 +2365,6 @@ function doSubmitCycle() {
     errEl.style.display = 'block';
     okBtn.disabled = false;
     okBtn.textContent = '提出する';
-  });
-}
-
-function unsubmitCycle() {
-  if (!STATE.cycle) return;
-  showModal('この日報の提出を取り消します。\n承認情報もあわせて消えます。よろしいですか？', {
-    icon: '⚠', danger: true,
-    confirmLabel: '提出を取消', cancelLabel: 'キャンセル',
-    confirm: () => {
-      gas('api_unsubmitCycle', { cycleID: STATE.cycle.cycleID }).then(res => {
-        if (!res.success) { showModal(res.error || '取消失敗', '⚠'); return; }
-        STATE.cycle.submittedAt = '';
-        STATE.cycle.submittedBy = '';
-        STATE.cycle.approvalRequestedTo = '';
-        STATE.cycle.approvedAt = '';
-        STATE.cycle.approverName = '';
-        STATE.cycle.approverEmail = '';
-        updateConfirmUI();
-      }).catch(err => showModal('通信エラー: ' + (err.message || err), '⚠'));
-    }
   });
 }
 
