@@ -228,6 +228,22 @@ function setupAuthorizeAll() {
 }
 
 /**
+ * Gmail 送信スコープ (script.send_mail) のみを単独で承認させるためのヘルパー。
+ *
+ * setupAuthorizeAll は try/catch で包んでいるため、未承認スコープがあっても
+ * エラーを握りつぶしてしまい同意ダイアログが出ないことがある。
+ * このヘルパーは catch せずに直接 MailApp を触るため、未承認なら必ず
+ * 「権限の確認」ダイアログが出る。
+ *
+ * 実行後 Logger に残量が出れば成功。
+ */
+function setupAuthorizeMail() {
+  const remaining = MailApp.getRemainingDailyQuota();
+  Logger.log('script.send_mail: OK。本日の送信残量 = ' + remaining + ' 通');
+  return remaining;
+}
+
+/**
  * 動作確認: 共通マスター・アプリDBへのアクセス確認
  */
 function testConnection() {
