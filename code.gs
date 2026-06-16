@@ -75,11 +75,15 @@ const HEADER_COLS = [
   '商品名',          // 16 商品マスターからのスナップショット
   '商品種別',        // 17 同上 (2L / 500ml)
   '商品通称',        // 18 同上
-  '確定日時',        // 19 (NEW) 日報確定操作の日時、空なら未確定
-  '確定者メール',    // 20 (NEW) 確定操作したユーザーのメール
+  '確定日時',        // 19 (旧名のまま) 「日報提出」操作の日時、空なら未提出
+  '確定者メール',    // 20 (旧名のまま) 提出操作したユーザーのメール
   '開始担当者',      // 21 (V) 製造開始時の担当者
   '開始廃棄本数',    // 22 (W) 製造開始時の廃棄本数
-  '終了担当者'       // 23 (X) 製造終了時の担当者
+  '終了担当者',      // 23 (X) 製造終了時の担当者
+  '承認依頼先メール', // 24 (Y) 提出時に選択したリーダーのメール
+  '承認日時',        // 25 (Z) リーダーが承認した日時、空なら未承認
+  '承認者氏名',      // 26 (AA) 承認操作したリーダーの表示名（印影用）
+  '承認者メール'     // 27 (AB) 承認操作したリーダーのメール
 ];
 
 // 列名→indexのマップ（HC.停止記録件数 のように使う）
@@ -881,11 +885,15 @@ function _findCycle(cycleID) {
         productName: r[16] ? String(r[16]) : '',
         productKind: r[17] ? String(r[17]) : '',
         productNickname: r[18] ? String(r[18]) : '',
-        confirmedAt: _toIso(r[19]),
-        confirmedBy: r[20] ? String(r[20]) : '',
+        submittedAt: _toIso(r[19]),
+        submittedBy: r[20] ? String(r[20]) : '',
         startCharge:  r[21] ? String(r[21]) : '',
         startWastage: (r[22] === '' || r[22] == null) ? '' : Number(r[22]),
-        endCharge:    r[23] ? String(r[23]) : ''
+        endCharge:    r[23] ? String(r[23]) : '',
+        approvalRequestedTo: r[24] ? String(r[24]) : '',
+        approvedAt:    _toIso(r[25]),
+        approverName:  r[26] ? String(r[26]) : '',
+        approverEmail: r[27] ? String(r[27]) : ''
       };
     }
   }
@@ -1154,11 +1162,15 @@ function _getCycles(params) {
       productName: r[16] ? String(r[16]) : '',
       productKind: r[17] ? String(r[17]) : '',
       productNickname: r[18] ? String(r[18]) : '',
-      confirmedAt: _toIso(r[19]),
-      confirmedBy: r[20] ? String(r[20]) : '',
+      submittedAt: _toIso(r[19]),
+      submittedBy: r[20] ? String(r[20]) : '',
       startCharge:  r[21] ? String(r[21]) : '',
       startWastage: (r[22] === '' || r[22] == null) ? '' : Number(r[22]),
-      endCharge:    r[23] ? String(r[23]) : ''
+      endCharge:    r[23] ? String(r[23]) : '',
+      approvalRequestedTo: r[24] ? String(r[24]) : '',
+      approvedAt:    _toIso(r[25]),
+      approverName:  r[26] ? String(r[26]) : '',
+      approverEmail: r[27] ? String(r[27]) : ''
     })),
     hasMore: hasMore,
     nextBeforeDate: hasMore ? _toDateStr(page[page.length - 1][2]) : null
@@ -1383,14 +1395,20 @@ function _validateCycleForConfirm(cycle, stopRecords) {
 }
 
 /**
- * 日報を確定する
- *   - バリデーション通れば確定日時 / 確定者メール を書く
- *   - 確定済みのものを再度叩いてもバリデーションは走るが何も変えない
- * payload: { cycleID }
+ * 日報を提出する
+ *   - バリデーション通れば 提出日時 / 提出者メール / 承認依頼先メール を書く
+ *   - 承認依頼先のリーダーに承認依頼メールを送信
+ *   - 提出済みのものを再度叩いても何も変えない（承認依頼先が変わるなら更新+メール再送）
+ * payload: { cycleID, approverEmail }
  */
-function api_confirmCycle(payload) {
+function api_submitCycle(payload) {
   const cycleID = payload && payload.cycleID;
+  const approverEmail = payload && payload.approverEmail
+    ? String(payload.approverEmail).toLowerCase().trim()
+    : '';
   if (!cycleID) return { success: false, error: 'cycleID は必須です' };
+  if (!approverEmail) return { success: false, error: '承認依頼先のリーダーを選択してください' };
+
   const cycle = _findCycle(cycleID);
   if (!cycle) return { success: false, error: 'サイクルが見つかりません: ' + cycleID };
   const stops = _getStopRecords(cycleID);
@@ -1408,10 +1426,28 @@ function api_confirmCycle(payload) {
         const row = i + 2;
         const now = new Date();
         const email = _activeUserEmail();
-        sheet.getRange(row, HC['確定日時']     + 1).setValue(now);
-        sheet.getRange(row, HC['確定者メール'] + 1).setValue(email);
-        sheet.getRange(row, HC['最終更新']     + 1).setValue(now);
-        return { success: true, confirmedAt: now.toISOString(), confirmedBy: email };
+        sheet.getRange(row, HC['確定日時']         + 1).setValue(now);
+        sheet.getRange(row, HC['確定者メール']     + 1).setValue(email);
+        sheet.getRange(row, HC['承認依頼先メール'] + 1).setValue(approverEmail);
+        sheet.getRange(row, HC['最終更新']         + 1).setValue(now);
+
+        let mailSent = false, mailError = '';
+        try {
+          _sendApprovalRequestEmail(approverEmail, cycle, email);
+          mailSent = true;
+        } catch (e) {
+          mailError = e.message || String(e);
+          Logger.log('[submit] mail failed: ' + mailError);
+        }
+
+        return {
+          success: true,
+          submittedAt: now.toISOString(),
+          submittedBy: email,
+          approvalRequestedTo: approverEmail,
+          mailSent: mailSent,
+          mailError: mailError
+        };
       }
     }
     return { success: false, error: 'サイクル行が見つかりません: ' + cycleID };
@@ -1541,6 +1577,33 @@ function _printMD(iso) {
   return (d.getMonth() + 1) + '/' + d.getDate();
 }
 
+/**
+ * 印刷シートの R3:R4 に承認印影を書き込む。承認済でないときは何もしない。
+ */
+function _writeApprovalSeal(sh, cycle) {
+  const range = sh.getRange('R3:R4');
+  if (!cycle.approvedAt) {
+    // 未承認: 印影セルを空にして罫線も消す（前回コピー残りを掃除）
+    try { range.breakApart(); } catch (_) {}
+    range.clearContent().setBorder(false, false, false, false, false, false);
+    return;
+  }
+  const d = new Date(cycle.approvedAt);
+  const ds = d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+  const name = cycle.approverName || cycle.approverEmail || '';
+  const sealText = '承認\n' + ds + '\n' + name;
+
+  range.merge();
+  range.setValue(sealText)
+    .setFontColor('#cc0000')
+    .setFontWeight('bold')
+    .setFontSize(7)
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle')
+    .setWrap(true)
+    .setBorder(true, true, true, true, false, false, '#cc0000', SpreadsheetApp.BorderStyle.SOLID_THICK);
+}
+
 function _fillPrintPage(sh, cycle, pageRows, pageNo, isFirstPage) {
   const md = String(cycle.productionDate).split('-');
   const DASH = '―';
@@ -1558,6 +1621,10 @@ function _fillPrintPage(sh, cycle, pageRows, pageNo, isFirstPage) {
   // 終了担当者(S3:S4 結合セル) は全ページに入れる + 結合範囲で縦中央寄せ
   sh.getRange('S3:S4').setVerticalAlignment('middle');
   sh.getRange('S3').setValue(cycle.endCharge || DASH);
+
+  // 承認印影 (R3:R4 結合セル): 承認済のときのみ赤い印影風で表示
+  //   Sheets の罫線は矩形のみ。「〇で囲まれた」要望に対して角型印で近似
+  _writeApprovalSeal(sh, cycle);
   // 開始担当者(Q7) / 開始廃棄本数(S7) は1ページ目のみ実値、以降は ―
   if (isFirstPage) {
     sh.getRange('Q7').setValue(cycle.startCharge || DASH);
@@ -1682,9 +1749,10 @@ function api_deleteCycle(payload) {
 }
 
 /**
- * 日報の確定を解除（リーダー以上のみ）
+ * 日報の提出を取り消す（リーダー以上のみ）
+ *   承認情報も一緒にクリアする（提出が無いまま承認は成立しないため）
  */
-function api_unconfirmCycle(payload) {
+function api_unsubmitCycle(payload) {
   if (!_isCurrentUserLeaderOrAbove()) return { success: false, error: 'リーダー以上の権限が必要です' };
   const cycleID = payload && payload.cycleID;
   if (!cycleID) return { success: false, error: 'cycleID は必須です' };
@@ -1698,8 +1766,87 @@ function api_unconfirmCycle(payload) {
     for (let i = 0; i < ids.length; i++) {
       if (ids[i][0] === cycleID) {
         const row = i + 2;
-        sheet.getRange(row, HC['確定日時']     + 1).setValue('');
-        sheet.getRange(row, HC['確定者メール'] + 1).setValue('');
+        sheet.getRange(row, HC['確定日時']         + 1).setValue('');
+        sheet.getRange(row, HC['確定者メール']     + 1).setValue('');
+        sheet.getRange(row, HC['承認依頼先メール'] + 1).setValue('');
+        sheet.getRange(row, HC['承認日時']         + 1).setValue('');
+        sheet.getRange(row, HC['承認者氏名']       + 1).setValue('');
+        sheet.getRange(row, HC['承認者メール']     + 1).setValue('');
+        sheet.getRange(row, HC['最終更新']         + 1).setValue(new Date());
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'サイクル行が見つかりません' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 日報を承認する（リーダー以上のみ）
+ *   提出済（HC[確定日時]に値あり）でないと承認できない
+ *   承認者の氏名は管理者名簿から自分のメールでlookup（無ければメールをそのまま使う）
+ * payload: { cycleID }
+ */
+function api_approveCycle(payload) {
+  if (!_isCurrentUserLeaderOrAbove()) return { success: false, error: 'リーダー以上の権限が必要です' };
+  const cycleID = payload && payload.cycleID;
+  if (!cycleID) return { success: false, error: 'cycleID は必須です' };
+  const year = _yearFromCycleID(cycleID);
+  const sheet = _getYearlySheet(CONFIG.SHEET_PREFIX_HEADER + year);
+  if (!sheet) return { success: false, error: 'サイクル年シートがありません' };
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i][0] === cycleID) {
+        const row = i + 2;
+        const submittedAt = sheet.getRange(row, HC['確定日時'] + 1).getValue();
+        if (!submittedAt) return { success: false, error: 'まだ提出されていない日報は承認できません' };
+
+        const now = new Date();
+        const email = _activeUserEmail();
+        const name = _getStaffNameByEmail(email) || email;
+        sheet.getRange(row, HC['承認日時']     + 1).setValue(now);
+        sheet.getRange(row, HC['承認者氏名']   + 1).setValue(name);
+        sheet.getRange(row, HC['承認者メール'] + 1).setValue(email);
+        sheet.getRange(row, HC['最終更新']     + 1).setValue(now);
+        return {
+          success: true,
+          approvedAt: now.toISOString(),
+          approverName: name,
+          approverEmail: email
+        };
+      }
+    }
+    return { success: false, error: 'サイクル行が見つかりません' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 日報の承認を取り消す（リーダー以上のみ）
+ *   提出状態は維持。承認情報のみクリア。
+ */
+function api_unapproveCycle(payload) {
+  if (!_isCurrentUserLeaderOrAbove()) return { success: false, error: 'リーダー以上の権限が必要です' };
+  const cycleID = payload && payload.cycleID;
+  if (!cycleID) return { success: false, error: 'cycleID は必須です' };
+  const year = _yearFromCycleID(cycleID);
+  const sheet = _getYearlySheet(CONFIG.SHEET_PREFIX_HEADER + year);
+  if (!sheet) return { success: false, error: 'サイクル年シートがありません' };
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i][0] === cycleID) {
+        const row = i + 2;
+        sheet.getRange(row, HC['承認日時']     + 1).setValue('');
+        sheet.getRange(row, HC['承認者氏名']   + 1).setValue('');
+        sheet.getRange(row, HC['承認者メール'] + 1).setValue('');
         sheet.getRange(row, HC['最終更新']     + 1).setValue(new Date());
         return { success: true };
       }
@@ -1708,6 +1855,59 @@ function api_unconfirmCycle(payload) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * 提出モーダルの「承認依頼先」候補: 管理者名簿の リーダー / 全権 全員
+ */
+function api_getLeaders() {
+  return _getPermissions()
+    .filter(p => {
+      const lvl = _normalizePermissionLevel(p.level);
+      return lvl === 'リーダー' || lvl === '全権';
+    })
+    .map(p => ({ name: p.name, email: p.email }));
+}
+
+/**
+ * メールから氏名を引く（管理者名簿のみ。なければ空文字）
+ */
+function _getStaffNameByEmail(email) {
+  if (!email) return '';
+  const e = String(email).toLowerCase().trim();
+  const rec = _getPermissions().find(p => p.email === e);
+  return rec ? rec.name : '';
+}
+
+/**
+ * 提出時に承認依頼先のリーダーに送信する確認依頼メール
+ *   subject: [日報承認依頼] {line} {製造日} {商品}
+ *   body: 依頼者 + サイクル情報 + インデックスページのURL
+ */
+function _sendApprovalRequestEmail(toEmail, cycle, requesterEmail) {
+  if (!toEmail) throw new Error('宛先メールが空です');
+  const indexUrl = ScriptApp.getService().getUrl();
+  const requesterName = _getStaffNameByEmail(requesterEmail) || requesterEmail || '(不明な操作者)';
+  const lineLabel = cycle.line === '500ml' ? '500ml' : '2L';
+  const product = cycle.productName || cycle.productNickname || '';
+  const dateStr = cycle.productionDate || '';
+
+  const subject = '[日報承認依頼] ' + lineLabel + ' ' + dateStr + (product ? ' ' + product : '');
+  const body =
+    requesterName + ' さんから日報の承認依頼があります。\n\n' +
+    '  ライン:   ' + lineLabel + '\n' +
+    '  製造日:   ' + dateStr + '\n' +
+    '  商品:     ' + product + '\n' +
+    '  サイクルID: ' + cycle.cycleID + '\n\n' +
+    '内容を確認のうえ、下記からアプリを開いて承認してください:\n' +
+    indexUrl + '\n';
+
+  MailApp.sendEmail({
+    to: toEmail,
+    subject: subject,
+    body: body,
+    name: '充填停止記録アプリ'
+  });
 }
 
 /**

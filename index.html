@@ -777,8 +777,8 @@ function renderCycleCard(c) {
     ? `<button class="cycle-delete-btn" onclick="event.stopPropagation(); showDeleteCycleModal('${c.cycleID}')" title="日報を削除">削除</button>`
     : '';
   const printBtn = `<button class="cycle-print-btn" onclick="event.stopPropagation(); printCycle('${c.cycleID}', this)" title="印刷">🖨 印刷</button>`;
-  const unconfirmedClass = c.confirmedAt ? '' : ' cycle-card-unconfirmed';
-  const statusBadge = c.confirmedAt ? '' : '<span class="cycle-status-badge">未確定</span>';
+  const unconfirmedClass = c.approvedAt ? '' : ' cycle-card-unconfirmed';
+  const statusBadge = c.approvedAt ? '' : '<span class="cycle-status-badge">未確定</span>';
   return `
     <div class="cycle-card${unconfirmedClass}" onclick="openCycle('${c.cycleID}')">
       ${statusBadge}

@@ -140,6 +140,57 @@ function migrateSchema() {
 }
 
 /**
+ * 旧「確定済」データを「承認済」扱いに変換するワンショット移行
+ *   - HC[確定日時] が入っていて HC[承認日時] が空のサイクル行が対象
+ *   - 確定日時 → 承認日時, 確定者メール → 承認者メール / 承認者氏名（lookup）
+ *   - 提出日時/提出者メール（旧 確定日時/確定者メール）はそのまま残す
+ *   - 何度実行しても安全（同じ行を再度更新しない）
+ *
+ * 実行順:
+ *   1. migrateSchema()  ← 新カラム4本を末尾追加
+ *   2. migrateLegacyConfirmedToApproved()  ← この関数（旧 確定済を承認済扱いに）
+ */
+function migrateLegacyConfirmedToApproved() {
+  Logger.log('==== 旧 確定済 → 承認済 一括移行 開始 ====');
+  const ss = SpreadsheetApp.openById(CONFIG.APP_SS_ID);
+  let totalMigrated = 0;
+  ss.getSheets().forEach(sheet => {
+    const name = sheet.getName();
+    if (name.indexOf(CONFIG.SHEET_PREFIX_HEADER) !== 0) return;
+    if (sheet.getLastRow() < 2) return;
+    if (sheet.getLastColumn() < HEADER_COLS.length) {
+      Logger.log('  ⚠ ' + name + ': 列数不足。先に migrateSchema() を実行してください');
+      return;
+    }
+
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, HEADER_COLS.length).getValues();
+    const updates = [];
+    data.forEach((r, idx) => {
+      const submittedAt = r[HC['確定日時']];
+      const submittedBy = r[HC['確定者メール']];
+      const approvedAt  = r[HC['承認日時']];
+      if (submittedAt && !approvedAt) {
+        const nm = _getStaffNameByEmail(submittedBy) || submittedBy || '(過去データ)';
+        updates.push({ row: idx + 2, approvedAt: submittedAt, name: nm, email: submittedBy });
+      }
+    });
+    if (updates.length === 0) {
+      Logger.log('  - ' + name + ': 移行対象なし');
+      return;
+    }
+    updates.forEach(u => {
+      sheet.getRange(u.row, HC['承認日時']     + 1).setValue(u.approvedAt);
+      sheet.getRange(u.row, HC['承認者氏名']   + 1).setValue(u.name);
+      sheet.getRange(u.row, HC['承認者メール'] + 1).setValue(u.email);
+    });
+    totalMigrated += updates.length;
+    Logger.log('  ✓ ' + name + ': ' + updates.length + ' 件を承認済扱いに移行');
+  });
+  Logger.log('==== 完了: 合計 ' + totalMigrated + ' 件 ====');
+  return { migrated: totalMigrated };
+}
+
+/**
  * 動作確認: 共通マスター・アプリDBへのアクセス確認
  */
 function testConnection() {
