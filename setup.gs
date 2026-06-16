@@ -191,6 +191,43 @@ function migrateLegacyConfirmedToApproved() {
 }
 
 /**
+ * appsscript.json に書いた OAuth スコープを一度にユーザーに同意させるためのヘルパー。
+ *
+ * 使い方:
+ *   Apps Script エディタ上部の関数選択で setupAuthorizeAll を選び、▷実行 を押す。
+ *   初回 / スコープ追加直後はここで「権限の確認」ダイアログが出るので承認する。
+ *   一度承認すれば、Web App から呼ぶ google.script.run でも追加スコープが使えるようになる。
+ *
+ * 何をしているか:
+ *   appsscript.json の各スコープを軽く触るだけ。値を変えたり書き込んだりはしない。
+ *   どれかの API が「権限が必要」エラーになっても他の確認は続行する。
+ */
+function setupAuthorizeAll() {
+  const tried = [];
+  const ok = [];
+  const ng = [];
+  const probe = (label, fn) => {
+    tried.push(label);
+    try { fn(); ok.push(label); }
+    catch (e) { ng.push(label + ': ' + e.message); }
+  };
+
+  probe('userinfo.email', () => Session.getActiveUser().getEmail());
+  probe('spreadsheets (app)',    () => SpreadsheetApp.openById(CONFIG.APP_SS_ID).getName());
+  probe('spreadsheets (master)', () => SpreadsheetApp.openById(CONFIG.MASTER_SS_ID).getName());
+  probe('drive',                 () => DriveApp.getRootFolder().getName());
+  probe('script.scriptapp',      () => ScriptApp.getProjectTriggers().length);
+  probe('script.send_mail',      () => MailApp.getRemainingDailyQuota());
+  probe('script.external_request', () => UrlFetchApp.fetch('https://www.google.com/generate_204', { muteHttpExceptions: true }).getResponseCode());
+
+  Logger.log('==== 認可確認結果 ====');
+  Logger.log('OK: ' + ok.join(', '));
+  if (ng.length) Logger.log('NG: \n  ' + ng.join('\n  '));
+  else Logger.log('全スコープ承認済み');
+  return { ok: ok, ng: ng };
+}
+
+/**
  * 動作確認: 共通マスター・アプリDBへのアクセス確認
  */
 function testConnection() {

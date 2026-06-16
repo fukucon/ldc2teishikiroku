@@ -229,6 +229,9 @@
 setup.gs → setupDatabase()        // シート作成（idempotent）
 setup.gs → _seedSampleMasters()   // 任意: 停止設備/理由/対応内容のサンプル投入
 
+// appsscript.json に OAuth スコープを足したあとは必ず実行（同意ダイアログが出る）
+setup.gs → setupAuthorizeAll()    // 追加スコープを含めて一括で再認可
+
 // 列定義変更後のマイグレーション（末尾追加のみ安全）
 setup.gs → migrateSchema()                          // HEADER_COLS / LOG_COLS / HISTORY_COLS の不足列を追記
 
