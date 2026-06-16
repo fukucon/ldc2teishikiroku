@@ -264,3 +264,81 @@ function testConnection() {
     Logger.log('アプリDB NG: ' + e.message);
   }
 }
+
+/**
+ * 既存日報の商品名を「略称【液種】」表記に一括変換
+ *   - 日報ヘッダー_YYYY: HC['商品ID'] を引いて HC['商品名'] / HC['商品通称'] を上書き
+ *   - 停止ログ_YYYY:    LC['切替後商品ID'] を引いて LC['切替後商品名'] / LC['切替後商品通称'] を上書き
+ *   - 商品IDが空の行はスキップ、マスタに無いIDもスキップ（ログだけ残す）
+ *   - 何度実行しても安全（dryRun=true で更新内容のプレビューだけ可能）
+ *
+ * 使い方:
+ *   Apps Script エディタで関数名 migrateProductNameFormat を選んで実行。
+ *   プレビューだけ見たい場合は: migrateProductNameFormat(true)
+ */
+function migrateProductNameFormat(dryRun) {
+  Logger.log('==== 商品名 → 略称【液種】 一括変換 開始 ' + (dryRun ? '(dryRun)' : '') + ' ====');
+  const ss = SpreadsheetApp.openById(CONFIG.APP_SS_ID);
+
+  // 商品マスタを id→{nickname,name,liquid} の辞書化
+  const productMap = {};
+  _getProducts().forEach(p => { productMap[p.id] = p; });
+  const buildLabel = (p) => {
+    const base = p.nickname || p.name || p.id;
+    return p.liquid ? (base + '【' + p.liquid + '】') : base;
+  };
+
+  let headerCount = 0, headerSkip = 0;
+  let logCount = 0, logSkip = 0;
+
+  ss.getSheets().forEach(sheet => {
+    const name = sheet.getName();
+
+    // 日報ヘッダー
+    if (name.indexOf(CONFIG.SHEET_PREFIX_HEADER) === 0) {
+      if (sheet.getLastRow() < 2) return;
+      const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, HEADER_COLS.length).getValues();
+      rows.forEach((r, idx) => {
+        const pid = String(r[HC['商品ID']] || '');
+        if (!pid) return;
+        const p = productMap[pid];
+        if (!p) { headerSkip++; Logger.log('  ⚠ ' + name + ' 行' + (idx + 2) + ': 商品ID=' + pid + ' がマスタに無い'); return; }
+        const label = buildLabel(p);
+        const oldLabel = String(r[HC['商品名']] || '');
+        if (oldLabel === label) return;
+        if (!dryRun) {
+          sheet.getRange(idx + 2, HC['商品名']   + 1).setValue(label);
+          sheet.getRange(idx + 2, HC['商品通称'] + 1).setValue(p.nickname || p.name || pid);
+        }
+        headerCount++;
+      });
+      Logger.log('  ' + (dryRun ? '[dry]' : '✓') + ' ' + name + ': 更新対象 ' + headerCount + ' 件 (累計)');
+    }
+
+    // 停止ログ
+    if (name.indexOf(CONFIG.SHEET_PREFIX_LOG) === 0) {
+      if (sheet.getLastRow() < 2) return;
+      const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, LOG_COLS.length).getValues();
+      rows.forEach((r, idx) => {
+        const pid = String(r[LC['切替後商品ID']] || '');
+        if (!pid) return;
+        const p = productMap[pid];
+        if (!p) { logSkip++; Logger.log('  ⚠ ' + name + ' 行' + (idx + 2) + ': 切替後商品ID=' + pid + ' がマスタに無い'); return; }
+        const label = buildLabel(p);
+        const oldLabel = String(r[LC['切替後商品名']] || '');
+        if (oldLabel === label) return;
+        if (!dryRun) {
+          sheet.getRange(idx + 2, LC['切替後商品名']   + 1).setValue(label);
+          sheet.getRange(idx + 2, LC['切替後商品通称'] + 1).setValue(p.nickname || p.name || pid);
+        }
+        logCount++;
+      });
+      Logger.log('  ' + (dryRun ? '[dry]' : '✓') + ' ' + name + ': 切替後 更新対象 ' + logCount + ' 件 (累計)');
+    }
+  });
+
+  Logger.log('==== 完了: 日報ヘッダー ' + headerCount + ' 件 / 停止ログ ' + logCount
+    + ' 件 更新' + (dryRun ? ' (dryRun: 実書込なし)' : '')
+    + ' / スキップ(マスタ欠落) ヘッダー ' + headerSkip + ' 件, ログ ' + logSkip + ' 件 ====');
+  return { headerUpdated: headerCount, logUpdated: logCount, headerSkipped: headerSkip, logSkipped: logSkip, dryRun: !!dryRun };
+}
