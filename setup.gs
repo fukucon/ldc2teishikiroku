@@ -244,6 +244,68 @@ function setupAuthorizeMail() {
 }
 
 /**
+ * テストメール送信（PDF添付なし）
+ *   宛先: 引数 to があれば to、無ければ実行ユーザー自身
+ *   例: sendTestMail()                                  → 自分宛
+ *       sendTestMail('foo@example.com')                 → 指定宛
+ */
+function sendTestMail(to) {
+  const recipient = to || Session.getActiveUser().getEmail();
+  if (!recipient) throw new Error('宛先が解決できません');
+  const now = new Date();
+  MailApp.sendEmail({
+    to: recipient,
+    subject: '[テスト] 充填停止記録アプリ メール送信確認 ' + Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm'),
+    body:
+      'これは充填停止記録アプリからのテスト送信です。\n' +
+      '送信時刻: ' + now.toString() + '\n' +
+      '実行ユーザー: ' + Session.getActiveUser().getEmail() + '\n',
+    name: '充填停止記録アプリ'
+  });
+  Logger.log('テストメール送信完了: ' + recipient + '  (本日の残量 = ' + MailApp.getRemainingDailyQuota() + ' 通)');
+  return { to: recipient, remaining: MailApp.getRemainingDailyQuota() };
+}
+
+/**
+ * テストメール送信（承認完了メールと同じフロー: 指定サイクルのPDFを添付）
+ *   承認時の自動メールと完全に同じ経路 (_buildCyclePdfBlob + _sendApprovedPdfEmail) で送る。
+ *   送信先は code.gs の APPROVED_PDF_RECIPIENT 固定（本番送り先のテスト用）。
+ *   宛先を自分にしたい場合は to を渡す。
+ *
+ * 例:
+ *   sendTestApprovedPdfMail('A20260617')                          → 固定宛 (ml-mno-gyomu@…) へ送信
+ *   sendTestApprovedPdfMail('A20260617', 'me@example.com')        → 自分宛に変更して送信
+ */
+function sendTestApprovedPdfMail(cycleID, to) {
+  if (!cycleID) throw new Error('cycleID を渡してください');
+  const cycle = _findCycle(cycleID);
+  if (!cycle) throw new Error('サイクルが見つかりません: ' + cycleID);
+  const stops = _getStopRecords(cycleID);
+  const pdfBlob = _buildCyclePdfBlob(cycle, stops);
+
+  const recipient = to || APPROVED_PDF_RECIPIENT;
+  const lineLabel = cycle.line === '500ml' ? '500ml' : '2L';
+  const product = cycle.productName || cycle.productNickname || '';
+  const dateStr = cycle.productionDate || '';
+
+  MailApp.sendEmail({
+    to: recipient,
+    subject: '[テスト送信][日報承認] ' + lineLabel + ' ' + dateStr + (product ? ' ' + product : ''),
+    body:
+      'これは充填停止記録アプリからのテスト送信です。\n' +
+      '承認完了メールと同じ経路でPDFを添付しています。\n\n' +
+      '  ライン:    ' + lineLabel + '\n' +
+      '  製造日:    ' + dateStr + '\n' +
+      '  商品:      ' + product + '\n' +
+      '  サイクルID: ' + cycleID + '\n',
+    name: '充填停止記録アプリ',
+    attachments: [pdfBlob]
+  });
+  Logger.log('PDFテストメール送信完了: ' + recipient + ' / cycle=' + cycleID);
+  return { to: recipient, cycleID: cycleID };
+}
+
+/**
  * 動作確認: 共通マスター・アプリDBへのアクセス確認
  */
 function testConnection() {
