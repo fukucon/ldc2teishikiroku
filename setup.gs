@@ -304,11 +304,12 @@ function migrateProductNameFormat(dryRun) {
         const p = productMap[pid];
         if (!p) { headerSkip++; Logger.log('  ⚠ ' + name + ' 行' + (idx + 2) + ': 商品ID=' + pid + ' がマスタに無い'); return; }
         const label = buildLabel(p);
-        const oldLabel = String(r[HC['商品名']] || '');
-        if (oldLabel === label) return;
+        const oldName     = String(r[HC['商品名']]   || '');
+        const oldNickname = String(r[HC['商品通称']] || '');
+        if (oldName === label && oldNickname === label) return;
         if (!dryRun) {
-          sheet.getRange(idx + 2, HC['商品名']   + 1).setValue(label);
-          sheet.getRange(idx + 2, HC['商品通称'] + 1).setValue(label);
+          if (oldName     !== label) sheet.getRange(idx + 2, HC['商品名']   + 1).setValue(label);
+          if (oldNickname !== label) sheet.getRange(idx + 2, HC['商品通称'] + 1).setValue(label);
         }
         headerCount++;
       });
@@ -325,11 +326,12 @@ function migrateProductNameFormat(dryRun) {
         const p = productMap[pid];
         if (!p) { logSkip++; Logger.log('  ⚠ ' + name + ' 行' + (idx + 2) + ': 切替後商品ID=' + pid + ' がマスタに無い'); return; }
         const label = buildLabel(p);
-        const oldLabel = String(r[LC['切替後商品名']] || '');
-        if (oldLabel === label) return;
+        const oldName     = String(r[LC['切替後商品名']]   || '');
+        const oldNickname = String(r[LC['切替後商品通称']] || '');
+        if (oldName === label && oldNickname === label) return;
         if (!dryRun) {
-          sheet.getRange(idx + 2, LC['切替後商品名']   + 1).setValue(label);
-          sheet.getRange(idx + 2, LC['切替後商品通称'] + 1).setValue(label);
+          if (oldName     !== label) sheet.getRange(idx + 2, LC['切替後商品名']   + 1).setValue(label);
+          if (oldNickname !== label) sheet.getRange(idx + 2, LC['切替後商品通称'] + 1).setValue(label);
         }
         logCount++;
       });
