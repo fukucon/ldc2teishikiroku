@@ -308,7 +308,7 @@ function migrateProductNameFormat(dryRun) {
         if (oldLabel === label) return;
         if (!dryRun) {
           sheet.getRange(idx + 2, HC['商品名']   + 1).setValue(label);
-          sheet.getRange(idx + 2, HC['商品通称'] + 1).setValue(p.nickname || p.name || pid);
+          sheet.getRange(idx + 2, HC['商品通称'] + 1).setValue(label);
         }
         headerCount++;
       });
@@ -329,7 +329,7 @@ function migrateProductNameFormat(dryRun) {
         if (oldLabel === label) return;
         if (!dryRun) {
           sheet.getRange(idx + 2, LC['切替後商品名']   + 1).setValue(label);
-          sheet.getRange(idx + 2, LC['切替後商品通称'] + 1).setValue(p.nickname || p.name || pid);
+          sheet.getRange(idx + 2, LC['切替後商品通称'] + 1).setValue(label);
         }
         logCount++;
       });

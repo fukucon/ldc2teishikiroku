@@ -357,11 +357,12 @@ function api_updateCycleField(payload) {
         if (field === 'productID') {
           // productID 設定時はマスターを引いて 商品名/種別/通称 も同時保存
           const p = _resolveProduct(value || '');
+          const pLabel = (p.nickname || p.name || p.id) + (p.liquid ? '【' + p.liquid + '】' : '');
           oldValue = sheet.getRange(row, HC['商品ID'] + 1).getValue();
           sheet.getRange(row, HC['商品ID']   + 1).setValue(p.id);
-          sheet.getRange(row, HC['商品名']   + 1).setValue(p.name);
+          sheet.getRange(row, HC['商品名']   + 1).setValue(pLabel);
           sheet.getRange(row, HC['商品種別'] + 1).setValue(p.kind);
-          sheet.getRange(row, HC['商品通称'] + 1).setValue(p.nickname);
+          sheet.getRange(row, HC['商品通称'] + 1).setValue(pLabel);
           newValue = p.id;
         } else {
           let storedValue;
@@ -673,11 +674,12 @@ function api_updateStopRecordFields(payload) {
           if (key === 'newProductID') {
             // 商品ID指定時はマスターを引いて切替後の名/種別/通称も同時保存
             const p = _resolveProduct(fields[key] || '');
+            const pLabel = (p.nickname || p.name || p.id) + (p.liquid ? '【' + p.liquid + '】' : '');
             const oldId = oldRow[LC['切替後商品ID']];
             sheet.getRange(row, LC['切替後商品ID']   + 1).setValue(p.id);
-            sheet.getRange(row, LC['切替後商品名']   + 1).setValue(p.name);
+            sheet.getRange(row, LC['切替後商品名']   + 1).setValue(pLabel);
             sheet.getRange(row, LC['切替後商品種別'] + 1).setValue(p.kind);
-            sheet.getRange(row, LC['切替後商品通称'] + 1).setValue(p.nickname);
+            sheet.getRange(row, LC['切替後商品通称'] + 1).setValue(pLabel);
             changes.push({ field: 'newProductID', oldValue: oldId, newValue: p.id });
             return;
           }
