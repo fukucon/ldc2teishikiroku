@@ -2381,7 +2381,10 @@ function approveCycle() {
         STATE.cycle.approverName = res.approverName;
         STATE.cycle.approverEmail = res.approverEmail;
         updateConfirmUI();
-        showModal('承認しました。', '✓');
+        const mailNote = res.mailSent
+          ? '\n承認済みPDFをメール送信しました。'
+          : ('\n※ メール送信に失敗しました: ' + (res.mailError || '不明なエラー'));
+        showModal('承認しました。' + mailNote, '✓');
       }).catch(err => showModal('通信エラー: ' + (err.message || err), '⚠'));
     }
   });

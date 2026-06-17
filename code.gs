@@ -1474,12 +1474,25 @@ function api_printCycle(payload) {
   const cycle = _findCycle(cycleID);
   if (!cycle) return { success: false, error: 'サイクルが見つかりません: ' + cycleID };
   const stops = _getStopRecords(cycleID);
+  try {
+    const pdf = _buildCyclePdfBlob(cycle, stops);
+    return { success: true, pdfBase64: Utilities.base64Encode(pdf.getBytes()), fileName: '停止記録_' + cycleID + '.pdf' };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
 
+/**
+ * サイクルの印刷PDFを Blob で返す（共通化）
+ *   - api_printCycle / 承認完了メール送信 のどちらからも使う
+ *   - 一時スプシは関数内で作成・確実に削除
+ *   - 失敗時は throw する（呼び出し側で握る）
+ */
+function _buildCyclePdfBlob(cycle, stops) {
   const appSS = _appSS();
   const template = appSS.getSheetByName(PRINT_TEMPLATE_NAME);
-  if (!template) return { success: false, error: '印刷テンプレート「' + PRINT_TEMPLATE_NAME + '」が見つかりません' };
+  if (!template) throw new Error('印刷テンプレート「' + PRINT_TEMPLATE_NAME + '」が見つかりません');
 
-  // データ行: 停止記録 + 末尾に製造終了マーカー
   const rows = stops.map(s => ({
     stopAt: s.stopAt, startAt: s.startAt, minutes: s.minutes,
     equipment: s.equipment, reason: s.reason, action: s.action,
@@ -1490,7 +1503,7 @@ function api_printCycle(payload) {
 
   const pageCount = Math.max(1, Math.ceil(rows.length / PRINT_STOPS_PER_PAGE));
 
-  const tempSS = SpreadsheetApp.create('印刷_' + cycleID + '_' + Date.now());
+  const tempSS = SpreadsheetApp.create('印刷_' + cycle.cycleID + '_' + Date.now());
   const tempId = tempSS.getId();
   try {
     for (let p = 0; p < pageCount; p++) {
@@ -1498,7 +1511,6 @@ function api_printCycle(payload) {
       const pageRows = rows.slice(p * PRINT_STOPS_PER_PAGE, (p + 1) * PRINT_STOPS_PER_PAGE);
       _fillPrintPage(sh, cycle, pageRows, p + 1, p === 0);
     }
-    // 既定の空シートを削除（page* 以外）
     tempSS.getSheets().forEach(s => { if (s.getName().indexOf('page') !== 0) tempSS.deleteSheet(s); });
     SpreadsheetApp.flush();
 
@@ -1507,12 +1519,8 @@ function api_printCycle(payload) {
       + '&gridlines=false&printtitle=false&sheetnames=false&pagenumbers=false&fzr=false'
       + '&top_margin=0.3&bottom_margin=0.3&left_margin=0.3&right_margin=0.3';
     const resp = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } });
-    const base64 = Utilities.base64Encode(resp.getContent());
-    return { success: true, pdfBase64: base64, fileName: '停止記録_' + cycleID + '.pdf' };
-  } catch (e) {
-    return { success: false, error: e.message };
+    return resp.getBlob().setName('停止記録_' + cycle.cycleID + '.pdf').setContentType('application/pdf');
   } finally {
-    // setTrashed だとゴミ箱に残ってしまうため、Drive API で完全削除する
     _deletePrintTempFile(tempId);
   }
 }
@@ -1815,11 +1823,27 @@ function api_approveCycle(payload) {
         sheet.getRange(row, HC['承認者氏名']   + 1).setValue(name);
         sheet.getRange(row, HC['承認者メール'] + 1).setValue(email);
         sheet.getRange(row, HC['最終更新']     + 1).setValue(now);
+
+        // 承認後: 承認印影込みPDFを生成して固定アドレスへ送信（失敗しても承認は成立）
+        let mailSent = false, mailError = '';
+        try {
+          const cycle = _findCycle(cycleID);
+          const stops = _getStopRecords(cycleID);
+          const pdfBlob = _buildCyclePdfBlob(cycle, stops);
+          _sendApprovedPdfEmail(cycle, pdfBlob, name);
+          mailSent = true;
+        } catch (e) {
+          mailError = e.message || String(e);
+          Logger.log('[approve mail] ' + cycleID + ' 失敗: ' + mailError);
+        }
+
         return {
           success: true,
           approvedAt: now.toISOString(),
           approverName: name,
-          approverEmail: email
+          approverEmail: email,
+          mailSent: mailSent,
+          mailError: mailError
         };
       }
     }
@@ -1908,6 +1932,40 @@ function _sendApprovalRequestEmail(toEmail, cycle, requesterEmail) {
     subject: subject,
     body: body,
     name: '充填停止記録アプリ'
+  });
+}
+
+// 承認完了時にPDFを送りつける固定アドレス
+const APPROVED_PDF_RECIPIENT = 'ml-mno-gyomu@ld-company.com';
+
+/**
+ * 承認完了時に印刷PDFを添付して送信
+ *   subject: [日報承認] {line} {製造日} {商品}
+ *   body: 承認者氏名 + サイクル情報 + インデックスURL
+ */
+function _sendApprovedPdfEmail(cycle, pdfBlob, approverName) {
+  if (!APPROVED_PDF_RECIPIENT) throw new Error('送信先メールが未設定です');
+  const indexUrl = ScriptApp.getService().getUrl();
+  const lineLabel = cycle.line === '500ml' ? '500ml' : '2L';
+  const product = cycle.productName || cycle.productNickname || '';
+  const dateStr = cycle.productionDate || '';
+
+  const subject = '[日報承認] ' + lineLabel + ' ' + dateStr + (product ? ' ' + product : '');
+  const body =
+    (approverName || '(承認者)') + ' が日報を承認しました。\n\n' +
+    '  ライン:    ' + lineLabel + '\n' +
+    '  製造日:    ' + dateStr + '\n' +
+    '  商品:      ' + product + '\n' +
+    '  サイクルID: ' + cycle.cycleID + '\n\n' +
+    '承認済みの日報PDFを添付しました。\n' +
+    'アプリ: ' + indexUrl + '\n';
+
+  MailApp.sendEmail({
+    to: APPROVED_PDF_RECIPIENT,
+    subject: subject,
+    body: body,
+    name: '充填停止記録アプリ',
+    attachments: [pdfBlob]
   });
 }
 
