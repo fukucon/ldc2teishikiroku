@@ -387,6 +387,16 @@
   .add-bar-product.wrap-empty .field-empty-mark { display: flex; }
   .add-bar-product .field-empty-mark { top: -6px; right: -6px; }
 
+  /* リーダー専用: ロック解除ボタン (ロック中かつ canEditConfirmed の時だけJSで表示) */
+  .cycle-product-unlock {
+    display: none;
+    border: 1px solid #fcd34d; background: #fffbeb; color: #92400e;
+    font-size: 13px; line-height: 1; padding: 4px 6px;
+    border-radius: 4px; cursor: pointer;
+  }
+  .cycle-product-unlock:hover { background: #fef3c7; }
+  .cycle-product-unlock.show { display: inline-flex; }
+
   /* ── 月日(紫) / 開始時刻(青) / 終了・停止時刻(赤) の色分け ── */
   /* 月/日 セレクタは紫枠 */
   #prod-end-month, #prod-end-day,
@@ -989,6 +999,8 @@
       <span class="add-bar-product" id="cycle-product-wrap">
         <span class="add-bar-product-label">商品</span>
         <select id="cycle-product" onchange="saveCycleProduct()"></select>
+        <button type="button" class="cycle-product-unlock" id="cycle-product-unlock"
+          onclick="unlockCycleProduct()" title="リーダー権限で初期商品のロックを解除">🔓</button>
         <span class="save-indicator" id="cycle-product-save"></span>
         <span class="field-empty-mark">!</span>
       </span>
@@ -2075,6 +2087,15 @@ function computeCurrentProduct() {
   return current;
 }
 
+// リーダーが「🔓 ロック解除」を押すとセッション中だけ true (リロードで戻る)
+let cycleProductUnlocked = false;
+
+function unlockCycleProduct() {
+  if (!STATE.canEditConfirmed) return;
+  cycleProductUnlocked = true;
+  populateCycleProductSelect();
+}
+
 function populateCycleProductSelect() {
   const sel = document.getElementById('cycle-product');
   if (!sel || !STATE.cycle) return;
@@ -2086,9 +2107,19 @@ function populateCycleProductSelect() {
   //   切替前の全記録の商品表示が遡って変わってしまう。以降の変更は品種切替で行う)
   //  ただし初期商品が未設定のままなら、確定できなくなるためロックしない
   const hasSwitch = (STATE.stopRecords || []).some(r => r.newProductID);
-  const locked = hasSwitch && !!String(STATE.cycle.productID || '').trim();
+  const baseLocked = hasSwitch && !!String(STATE.cycle.productID || '').trim();
+  // リーダーがロック解除済みなら実質ロックを外す
+  const locked = baseLocked && !(STATE.canEditConfirmed && cycleProductUnlocked);
   sel.disabled = locked;
-  sel.title = locked ? '品種切替の記録があるため変更できません。商品の変更は品種切替の停止記録で行ってください。' : '';
+  sel.title = locked
+    ? '品種切替の記録があるため変更できません。商品の変更は品種切替の停止記録で行ってください。'
+    : (baseLocked && cycleProductUnlocked ? 'リーダー権限でロック解除中: 注意して変更してください' : '');
+  // ロック解除ボタンは「ロック中 + リーダー + 未解除」の時だけ表示
+  const unlockBtn = document.getElementById('cycle-product-unlock');
+  if (unlockBtn) {
+    const show = baseLocked && STATE.canEditConfirmed && !cycleProductUnlocked;
+    unlockBtn.classList.toggle('show', show);
+  }
   updateCycleProductEmpty();
 }
 
