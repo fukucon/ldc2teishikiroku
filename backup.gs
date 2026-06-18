@@ -2,7 +2,11 @@
 //  自動バックアップモジュール
 //  - 6時間ごとの時間トリガーで CONFIG.APP_SS_ID の全シートを
 //    CSV 形式でエクスポートし、Drive の「停止記録バックアップ」フォルダへ保存
-//  - シート1枚 = 1ファイル (<シート名>.csv) を固定名で上書き保存
+//  - 「<シート名>_yyyy-MM-dd.csv」の日付付き名で保存
+//      - 同じ日付のファイルは上書き (1日に何度走っても日次1ファイル)
+//      - 7日 (RETENTION_DAYS) を超えた古いファイルは自動削除
+//  - フォルダはマイドライブ直下に自動作成される (初回実行時)
+//    場所は showBackupStatus() の folderUrl で確認可
 //
 //  初回セットアップ:
 //    1. Apps Script エディタで setupBackupTrigger() を一度だけ実行
@@ -18,6 +22,9 @@ const BACKUP_CONFIG = {
 
   // 6時間ごと
   TRIGGER_HOURS: 6,
+
+  // 日次バックアップを残す日数 (この日数を超えたものは自動削除)
+  RETENTION_DAYS: 7,
 
   // ロック取得タイムアウト(ms)
   LOCK_TIMEOUT_MS: 60000,
@@ -41,9 +48,9 @@ function backupAppSpreadsheet() {
     const folder = _ensureBackupFolder();
     const appSS = SpreadsheetApp.openById(CONFIG.APP_SS_ID);
     const sheets = appSS.getSheets();
+    const dateStr = Utilities.formatDate(startedAt, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 
     let written = 0, skipped = 0, totalBytes = 0;
-    const fileIds = [];
 
     sheets.forEach(sheet => {
       const sheetName = sheet.getName();
@@ -53,33 +60,36 @@ function backupAppSpreadsheet() {
         Logger.log('[backup] 空シートのためスキップ: ' + sheetName);
         return;
       }
-      const fileName = _safeCsvFileName(sheetName) + '.csv';
+      const fileName = _safeCsvFileName(sheetName) + '_' + dateStr + '.csv';
       const csv = _sheetToCsv(sheet);
       const blob = Utilities.newBlob(csv, 'text/csv', fileName);
 
-      // 既存の同名ファイルを削除 (上書き相当)
+      // 同じ日付のファイルだけ削除 → 当日分は上書き、別日のファイルは温存
       const it = folder.getFilesByName(fileName);
       while (it.hasNext()) {
         try { it.next().setTrashed(true); } catch (_) {}
       }
       const file = folder.createFile(blob);
-      fileIds.push(file.getId());
       written++;
       totalBytes += file.getSize();
     });
+
+    // 7日 (RETENTION_DAYS) を超えた古い CSV を掃除
+    const purged = _purgeOldBackups(folder, startedAt);
 
     PropertiesService.getScriptProperties().setProperty(
       BACKUP_CONFIG.PROP_LAST_BACKUP, startedAt.toISOString()
     );
 
     Logger.log('[backup] OK written=' + written + ' skipped=' + skipped
-      + ' totalSize=' + totalBytes + 'B folder=' + folder.getName()
-      + ' at=' + startedAt.toISOString());
+      + ' totalSize=' + totalBytes + 'B purged=' + purged
+      + ' folder=' + folder.getName() + ' at=' + startedAt.toISOString());
     return {
       success: true,
       written: written,
       skipped: skipped,
       totalBytes: totalBytes,
+      purged: purged,
       folderId: folder.getId(),
       folderUrl: folder.getUrl(),
       at: startedAt.toISOString()
@@ -131,6 +141,33 @@ function _safeCsvFileName(name) {
 }
 
 // =====================================================
+//  RETENTION_DAYS を超えた古いバックアップ CSV を削除
+//   - 「..._yyyy-MM-dd.csv」のファイル名規約に従うものだけ対象
+//   - 規約外のファイルには触らない (手動配置されたものを守る)
+// =====================================================
+function _purgeOldBackups(folder, now) {
+  const cutoffMs = now.getTime() - (BACKUP_CONFIG.RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const re = /_(\d{4}-\d{2}-\d{2})\.csv$/;
+  let purged = 0;
+  const it = folder.getFilesByType(MimeType.CSV);
+  while (it.hasNext()) {
+    const f = it.next();
+    const m = re.exec(f.getName());
+    if (!m) continue;  // 規約外は触らない
+    const t = new Date(m[1] + 'T00:00:00').getTime();
+    if (isNaN(t)) continue;
+    if (t >= cutoffMs) continue;
+    try {
+      f.setTrashed(true);
+      purged++;
+    } catch (e) {
+      Logger.log('[backup] 古いファイル削除失敗: ' + f.getName() + ' / ' + e.message);
+    }
+  }
+  return purged;
+}
+
+// =====================================================
 //  バックアップフォルダを取得（なければ作成）
 //  同名フォルダが複数ある場合は先頭を使う
 // =====================================================
@@ -169,6 +206,27 @@ function removeBackupTrigger() {
     }
   });
   Logger.log('[backup] トリガー除去完了: ' + removed + ' 件');
+  return { removed: removed };
+}
+
+// =====================================================
+//  旧仕様 (日付なしの「<シート名>.csv」) のファイルを一掃する手動ヘルパー
+//  日付付き仕様に切り替えた直後に1回だけ実行する想定
+// =====================================================
+function cleanupLegacyBackupFiles() {
+  const folder = _ensureBackupFolder();
+  let removed = 0;
+  const it = folder.getFilesByType(MimeType.CSV);
+  while (it.hasNext()) {
+    const f = it.next();
+    const name = f.getName();
+    // 「_yyyy-MM-dd.csv」を含まない CSV を旧ファイルとみなす
+    if (!/_(\d{4}-\d{2}-\d{2})\.csv$/.test(name) && /\.csv$/.test(name)) {
+      try { f.setTrashed(true); removed++; }
+      catch (e) { Logger.log('[backup] 旧ファイル削除失敗: ' + name + ' / ' + e.message); }
+    }
+  }
+  Logger.log('[backup] 旧仕様ファイル削除: ' + removed + ' 件');
   return { removed: removed };
 }
 
