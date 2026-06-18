@@ -1134,6 +1134,28 @@ function gas(method, ...args) {
 const POLL_INTERVAL_MS = 30000;   // 30秒。他アプリと GAS 制限を共有しているため抑え気味
 let pollTimer = null;
 
+// iPad/Safari 対策: record-field を触っている間（datalist 候補ポップアップや
+// 予測変換バー操作で activeElement が一瞬 body に戻る瞬間も含めて）softMerge の
+// 再描画で入力中の値が消えないように、最後の操作から一定時間ロックする
+const RECORD_EDIT_GRACE_MS = 2500;
+let lastRecordInteractionAt = 0;
+let pendingRecordSaves = 0;
+
+function isRecordEditingNow() {
+  const ae = document.activeElement;
+  if (ae && ae.classList && ae.classList.contains('record-field')) return true;
+  if (pendingRecordSaves > 0) return true;
+  if (Date.now() - lastRecordInteractionAt < RECORD_EDIT_GRACE_MS) return true;
+  return false;
+}
+
+document.addEventListener('focusin', function(e) {
+  const t = e.target;
+  if (t && t.classList && t.classList.contains('record-field')) {
+    lastRecordInteractionAt = Date.now();
+  }
+}, true);
+
 function setOnlineStatus(online) {
   const el = document.getElementById('conn-status');
   const txt = document.getElementById('conn-text');
@@ -1344,10 +1366,11 @@ function softMerge(detail) {
   if (eCh && ae !== eCh) eCh.value = detail.cycle.endCharge || '';
   updateProdExtraEmpty();
 
-  // 停止記録一覧: 行内フィールド編集中ならスキップ（次回反映）
+  // 停止記録一覧: 行内フィールドを操作中ならスキップ（次回反映）
+  //   iPad/Safari の datalist 候補ポップアップや予測変換バー操作で activeElement が
+  //   一瞬 body に戻る瞬間も含めて、最後の操作から数秒間は再描画しない
   STATE.stopRecords = detail.stopRecords || [];
-  const activeIsRecord = ae && ae.classList && ae.classList.contains('record-field');
-  if (!activeIsRecord) {
+  if (!isRecordEditingNow()) {
     renderRecordList();
   }
 
@@ -1423,6 +1446,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const px = t.closest && t.closest('.prod-extra-wrap');
     if (px) { updateProdExtraEmpty(); return; }
     if (!t.classList || !t.classList.contains('record-field')) return;
+    lastRecordInteractionAt = Date.now();  // softMerge による上書きを防ぐためのグレース更新
     const lid = t.dataset.logId;
     const field = t.dataset.field;
     if (!lid || !field) return;
@@ -2631,6 +2655,9 @@ function setRecInd(el, state) {
 function saveRecordField(logID, fieldKey, value) {
   const indEl = findInd(logID, fieldKey);
   setRecInd(indEl, 'saving', '保存中…');
+  pendingRecordSaves++;
+  lastRecordInteractionAt = Date.now();
+  const releaseLock = function() { pendingRecordSaves = Math.max(0, pendingRecordSaves - 1); };
 
   if (fieldKey === 'startTime') {
     gas('api_updateStopRecordEnd', { logID: logID, startTime: value }).then(function(res) {
@@ -2650,7 +2677,8 @@ function saveRecordField(logID, fieldKey, value) {
       }
       const item = document.querySelector('.record-item[data-log-id="' + logID + '"]');
       if (item) item.classList.toggle('unfinished', !value);
-    }).catch(function(err) { setRecInd(indEl, 'error', err.message); });
+    }).catch(function(err) { setRecInd(indEl, 'error', err.message); })
+      .then(releaseLock, releaseLock);
     return;
   }
 
@@ -2694,7 +2722,8 @@ function saveRecordField(logID, fieldKey, value) {
     if (fieldKey === 'newProductID' || fieldKey === 'equipment') {
       renderRecordList();
     }
-  }).catch(function(err) { setRecInd(indEl, 'error', err.message); });
+  }).catch(function(err) { setRecInd(indEl, 'error', err.message); })
+    .then(releaseLock, releaseLock);
 }
 
 function saveRecordStopAt(logID) {
