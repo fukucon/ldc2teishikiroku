@@ -277,7 +277,13 @@ function sendTestMail(to) {
  *   sendTestApprovedPdfMail('A20260617', 'me@example.com')        → 自分宛に変更して送信
  */
 function sendTestApprovedPdfMail(cycleID, to) {
-  if (!cycleID) throw new Error('cycleID を渡してください');
+  // 引数なしで実行されたら（Apps Scriptエディタの▷実行は引数を渡せない）
+  // 直近のサイクルを1件自動選択する
+  if (!cycleID) {
+    cycleID = _findLatestCycleID();
+    if (!cycleID) throw new Error('サイクルが1件もありません。cycleID を引数で渡してください');
+    Logger.log('cycleID 未指定のため直近サイクルを使用: ' + cycleID);
+  }
   const cycle = _findCycle(cycleID);
   if (!cycle) throw new Error('サイクルが見つかりません: ' + cycleID);
   const stops = _getStopRecords(cycleID);
@@ -303,6 +309,23 @@ function sendTestApprovedPdfMail(cycleID, to) {
   });
   Logger.log('PDFテストメール送信完了: ' + recipient + ' / cycle=' + cycleID);
   return { to: recipient, cycleID: cycleID };
+}
+
+/**
+ * 直近サイクルのcycleIDを返す（現在年→前年の順で最大行を見る）
+ */
+function _findLatestCycleID() {
+  const ss = SpreadsheetApp.openById(CONFIG.APP_SS_ID);
+  const currentYear = new Date().getFullYear();
+  for (let y = currentYear; y >= currentYear - 1; y--) {
+    const sh = ss.getSheetByName(CONFIG.SHEET_PREFIX_HEADER + y);
+    if (!sh || sh.getLastRow() < 2) continue;
+    const ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+    for (let i = ids.length - 1; i >= 0; i--) {
+      if (ids[i][0]) return String(ids[i][0]);
+    }
+  }
+  return '';
 }
 
 /**
