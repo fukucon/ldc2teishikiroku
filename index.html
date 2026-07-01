@@ -186,6 +186,28 @@
   }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
 
+  /* ── ボタン内スピナー (処理中を明示し、連打を防ぐ) ── */
+  .btn-spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    margin-right: 6px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    vertical-align: -2px;
+    animation: spin 0.7s linear infinite;
+  }
+  /* モーダル全体をブロックする処理中オーバーレイ (誤タップ防止) */
+  .modal-busy-overlay {
+    display: none;
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,0.5);
+    z-index: 20;
+    cursor: wait;
+  }
+  .modal.busy { position: relative; }
+  .modal.busy .modal-busy-overlay { display: block; }
+
   /* ── 50/50 並列レイアウト ── */
   .split-view {
     flex: 1 1 auto;
@@ -511,7 +533,8 @@
 
 <!-- ─── 日報新規作成モーダル ─── -->
 <div class="modal-backdrop" id="new-cycle-modal" style="display: none;">
-  <div class="modal">
+  <div class="modal" id="new-cycle-modal-inner">
+    <div class="modal-busy-overlay"></div>
     <div class="modal-header">日報新規作成</div>
     <div class="modal-body">
       <div class="form-group">
@@ -982,6 +1005,7 @@ function validateNewCycle() {
 }
 
 function submitNewCycle() {
+  if (STATE.creatingCycle) return;  // 連打防止（タブレットでの二重送信ガード）
   const v = validateNewCycle();
   if (!v.ok) return;
 
@@ -1002,29 +1026,40 @@ function confirmNewYear() {
 }
 
 function executeCreateCycle(v) {
+  if (STATE.creatingCycle) return;  // 連打防止（タブレットでの二重送信ガード）
+  STATE.creatingCycle = true;
+
   const btn = document.getElementById('new-cycle-submit');
+  const modalInner = document.getElementById('new-cycle-modal-inner');
   btn.disabled = true;
-  btn.textContent = '作成中…';
+  btn.innerHTML = '<span class="btn-spinner"></span>作成中…';
+  modalInner.classList.add('busy');
+
+  const reset = () => {
+    STATE.creatingCycle = false;
+    btn.disabled = false;
+    btn.textContent = '作成する';
+    modalInner.classList.remove('busy');
+  };
 
   gas('api_createCycle', {
     line: v.line,
     productionDate: v.dateStr,
     department: STATE.department
   }).then(res => {
-    btn.disabled = false;
-    btn.textContent = '作成する';
     if (!res.success) {
+      reset();
       const errEl = document.getElementById('new-cycle-error');
       errEl.textContent = res.error || '作成に失敗しました';
       errEl.style.display = 'block';
       return;
     }
     closeModal('new-cycle-modal');
+    reset();
     // 作成したサイクルの記録画面へ遷移
     openCycle(res.cycleID);
   }).catch(err => {
-    btn.disabled = false;
-    btn.textContent = '作成する';
+    reset();
     const errEl = document.getElementById('new-cycle-error');
     errEl.textContent = '通信エラー: ' + err.message;
     errEl.style.display = 'block';
