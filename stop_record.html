@@ -762,6 +762,19 @@
   .now-btn:hover { background: #dbeafe; }
   .now-btn:active { background: #bfdbfe; }
 
+  /* 温度欄の「－」ボタン: 明示的に未計測(対象外)を記録。入力漏れの「!」とは区別される */
+  .temp-input-row { display: flex; align-items: center; gap: 4px; }
+  .temp-input-row input { flex: 1; min-width: 0; }
+  .dash-btn {
+    font-size: 12px; font-weight: 700;
+    color: var(--muted); background: #f3f4f6;
+    border: 1px solid var(--border); border-radius: 5px;
+    padding: 2px 8px; min-height: 30px;
+    cursor: pointer; flex-shrink: 0;
+  }
+  .dash-btn:hover { background: #e5e7eb; }
+  .dash-btn.active { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+
   .record-fields-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -803,7 +816,8 @@
   }
   /* 未入力フォーム: ピンク背景 + 右上に赤い ! バッジ */
   .field-input-wrap.wrap-empty > input.record-field,
-  .field-input-wrap.wrap-empty > select.record-field {
+  .field-input-wrap.wrap-empty > select.record-field,
+  .field-input-wrap.wrap-empty .temp-input-row > input.record-field {
     background: #fee2e2;
     border-color: #fca5a5;
   }
@@ -1542,9 +1556,9 @@ const AC_SOURCES = {
   reason:           () => (STATE.masters && STATE.masters.reason)    || [],
   action:           () => (STATE.masters && STATE.masters.action)    || [],
   charge:           () => (STATE.masters && STATE.masters.charge)    || [],
-  'uf-temp':        () => ['50','51','52','53','54','55','56','57','58','59','60'],
-  'tea-temp':       () => ['82','83','84','85','86','87','88','89','90','91','92'],
-  'filler-temp-500':() => ['65'],
+  'uf-temp':        () => ['－','50','51','52','53','54','55','56','57','58','59','60'],
+  'tea-temp':       () => ['－','82','83','84','85','86','87','88','89','90','91','92'],
+  'filler-temp-500':() => ['－','65'],
   wastage:          () => ['—','100','150']
 };
 
@@ -2462,6 +2476,35 @@ function unapproveCycle() {
   });
 }
 
+// 温度欄の「明示的に未計測」判定・正規化
+//   全角/半角ハイフン・長音記号・マイナス記号・emダッシュ等の紛らわしい入力を
+//   すべて全角ハイフン「－」に正規化して保存する（入力漏れの空欄とは区別する）
+const TEMP_DASH = '－';
+const TEMP_DASH_RE = /^[－ー−―—\-]+$/;
+function isTempDash(v) {
+  return typeof v === 'string' && TEMP_DASH_RE.test(v.trim());
+}
+function normalizeTempValue(v) {
+  const trimmed = (typeof v === 'string') ? v.trim() : v;
+  if (typeof trimmed === 'string' && trimmed !== '' && TEMP_DASH_RE.test(trimmed)) return TEMP_DASH;
+  return trimmed;
+}
+
+// 「－」ボタン: 温度欄を明示的に「測定対象外」にして保存
+function setTempDash(logID, fieldKey) {
+  const input = document.querySelector(
+    '.record-field[data-log-id="' + logID + '"][data-field="' + fieldKey + '"]'
+  );
+  if (!input) return;
+  // 既にダッシュ状態ならトグルで解除（空欄に戻す）
+  const next = isTempDash(input.value) ? '' : TEMP_DASH;
+  input.value = next;
+  input.dispatchEvent(new Event('input', { bubbles: true }));  // wrap-empty/!マークを既存ロジックで更新
+  const btn = input.parentElement && input.parentElement.querySelector('.dash-btn');
+  if (btn) btn.classList.toggle('active', next === TEMP_DASH);
+  saveRecordField(logID, fieldKey, next);
+}
+
 // =====================================================
 //  停止記録一覧（各行に全フィールドをインライン表示）
 // =====================================================
@@ -2623,11 +2666,15 @@ function renderRecordList() {
           <div>
             <div class="field-label">${is500ml ? 'フィラー温度' : 'MF温度'}</div>
             <div class="field-input-wrap${emptyCls(r.ufTemp)}">
-              <input type="number" class="record-field" step="0.1"
-                data-ac="${is500ml ? 'filler-temp-500' : 'uf-temp'}"
-                data-log-id="${lid}" data-field="ufTemp"
-                value="${r.ufTemp || ''}"
-                onblur="saveRecordField('${lid}', 'ufTemp', this.value)">
+              <div class="temp-input-row">
+                <input type="text" inputmode="decimal" class="record-field"
+                  data-ac="${is500ml ? 'filler-temp-500' : 'uf-temp'}"
+                  data-log-id="${lid}" data-field="ufTemp"
+                  value="${escapeAttr(r.ufTemp || '')}"
+                  onblur="saveRecordField('${lid}', 'ufTemp', this.value)">
+                <button type="button" class="dash-btn${isTempDash(r.ufTemp) ? ' active' : ''}"
+                  onclick="setTempDash('${lid}', 'ufTemp')" title="測定対象外（明示的に未計測）">－</button>
+              </div>
               <span class="rec-ind" data-ind="${lid}-ufTemp"></span>
               ${MARK}
             </div>
@@ -2636,11 +2683,15 @@ function renderRecordList() {
           <div>
             <div class="field-label">TEA温度</div>
             <div class="field-input-wrap${emptyCls(r.teaTemp)}">
-              <input type="number" class="record-field" step="0.1"
-                data-ac="tea-temp"
-                data-log-id="${lid}" data-field="teaTemp"
-                value="${r.teaTemp || ''}"
-                onblur="saveRecordField('${lid}', 'teaTemp', this.value)">
+              <div class="temp-input-row">
+                <input type="text" inputmode="decimal" class="record-field"
+                  data-ac="tea-temp"
+                  data-log-id="${lid}" data-field="teaTemp"
+                  value="${escapeAttr(r.teaTemp || '')}"
+                  onblur="saveRecordField('${lid}', 'teaTemp', this.value)">
+                <button type="button" class="dash-btn${isTempDash(r.teaTemp) ? ' active' : ''}"
+                  onclick="setTempDash('${lid}', 'teaTemp')" title="測定対象外（明示的に未計測）">－</button>
+              </div>
               <span class="rec-ind" data-ind="${lid}-teaTemp"></span>
               ${MARK}
             </div>
@@ -2719,6 +2770,11 @@ function saveRecordField(logID, fieldKey, value) {
     const n = parseInt(trimmed, 10);
     trimmed = isNaN(n) ? '0' : String(n);
   }
+  // MF/TEA温度: 全角/半角ハイフンや長音記号など紛らわしい入力を「－」に正規化
+  //   （明示的に「測定対象外」として記録。未入力の空欄とは区別され、!マークも出ない）
+  if (fieldKey === 'ufTemp' || fieldKey === 'teaTemp') {
+    trimmed = normalizeTempValue(trimmed);
+  }
   const fields = {};
   fields[fieldKey] = trimmed;
 
@@ -2748,6 +2804,17 @@ function saveRecordField(logID, fieldKey, value) {
     if (rec) {
       rec[fieldKey] = trimmed;
       if (autoAction !== null) rec.action = autoAction;
+    }
+    // MF/TEA温度: 正規化後の値（－ 等）を入力欄とダッシュボタンに反映
+    if (fieldKey === 'ufTemp' || fieldKey === 'teaTemp') {
+      const inputEl = document.querySelector(
+        '.record-field[data-log-id="' + logID + '"][data-field="' + fieldKey + '"]'
+      );
+      if (inputEl) {
+        inputEl.value = trimmed;
+        const btn = inputEl.parentElement && inputEl.parentElement.querySelector('.dash-btn');
+        if (btn) btn.classList.toggle('active', trimmed === TEMP_DASH);
+      }
     }
     // 商品切替の保存 or 停止設備変更時は再描画して各行の商品バッジを更新
     if (fieldKey === 'newProductID' || fieldKey === 'equipment') {
